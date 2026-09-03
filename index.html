@@ -49,7 +49,7 @@ APPROVED-BY: (self, personal project)    DATE: 2026-09-02
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1b1a18">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -103,7 +103,7 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
-main { padding: 10px 14px 0; max-width: 760px; margin: 0 auto; }
+main { padding: calc(10px + env(safe-area-inset-top)) 14px 0; max-width: 760px; margin: 0 auto; }
 
 h2 { font-size: 22px; margin: 12px 0 10px; }
 h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;
@@ -295,6 +295,54 @@ input:focus, textarea:focus { outline: 2px solid var(--accent-color); outline-of
   font-family: inherit; cursor: pointer;
 }
 .tab[aria-selected="true"] { color: var(--accent-color); }
+
+/* --- Compact log screen: everything, coordinates included, on one phone screen --- */
+
+#log-screen .panel { padding: 6px 8px 8px; margin-bottom: 0; }
+#log-screen input[type="text"] { min-height: 38px; padding: 6px 9px; font-size: 15px; border-radius: 7px; }
+.field-pair { gap: 6px; }
+.compact-row { margin-top: 6px; }
+
+/* The grade grid: six across, three down. */
+#grade-buttons { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+#grade-buttons .chip { min-width: 0; min-height: 36px; padding: 4px 2px; font-size: 14px; border-radius: 7px; }
+
+/* A row of choices with no wasted width. */
+.choice-row { display: flex; gap: 5px; }
+.choice-row .chip { flex: 1 1 0; min-width: 0; min-height: 38px; padding: 4px 4px; font-size: 14px; border-radius: 7px; }
+.choice-row .chip-toggle { flex: 2 1 0; }
+
+/* The climbs on this boulder: one line, scrolls sideways, fixed height. */
+#known-climb-buttons {
+  display: flex; flex-wrap: nowrap; gap: 5px; overflow-x: auto;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px;
+}
+#known-climb-buttons::-webkit-scrollbar { display: none; }
+#known-climb-buttons .chip { flex: 0 0 auto; min-height: 36px; padding: 4px 9px; font-size: 14px; white-space: nowrap; }
+
+/* The coordinate lines, sized to match the rows above them. */
+#log-screen .coordinate-line { gap: 5px; margin: 5px 0 0; }
+#log-screen .coordinate-line .line-name { flex: 0 0 26px; font-size: 12px; }
+#log-screen .coordinate-box { min-height: 38px; padding: 5px 4px; font-size: 15px; border-radius: 7px; }
+#log-screen .hemisphere-button { flex: 0 0 38px; min-height: 38px; font-size: 14px; border-radius: 7px; }
+
+/* The readout and the three location buttons share one line. */
+.readout-row { display: flex; align-items: center; gap: 5px; margin-top: 5px; }
+.readout-row .decimal-readout { flex: 1 1 0; min-width: 0; margin: 0; font-size: 13px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.readout-row .button-quiet { flex: 0 0 auto; min-height: 34px; padding: 4px 10px; font-size: 13px; border-radius: 7px; }
+
+#log-screen .button-primary { margin-top: 6px; min-height: 42px; font-size: 16px; }
+
+#tab-bar .tab { min-height: 50px; font-size: 13px; }
+body { padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
+
+/* The message bar floats. It must not move the layout when it appears. */
+#message-bar, #storage-warning {
+  position: fixed; left: 10px; right: 10px; z-index: 30;
+  top: calc(8px + env(safe-area-inset-top)); margin: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
 </style>
 </head>
 <body>
@@ -318,59 +366,57 @@ input:focus, textarea:focus { outline: 2px solid var(--accent-color); outline-of
 
       <div class="field-pair">
         <div>
-          <label for="area-input">Area</label>
-          <input type="text" id="area-input" list="area-name-list" autocomplete="off"
-                 autocapitalize="words" placeholder="Area">
-          <datalist id="area-name-list"></datalist>
+          <input type="text" id="locale-input" list="locale-name-list" autocomplete="off"
+                 autocapitalize="words" placeholder="Locale" aria-label="Locale">
+          <datalist id="locale-name-list"></datalist>
         </div>
         <div>
-          <label for="boulder-input">Boulder</label>
+          <input type="text" id="area-input" list="area-name-list" autocomplete="off"
+                 autocapitalize="words" placeholder="Area" aria-label="Area">
+          <datalist id="area-name-list"></datalist>
+        </div>
+      </div>
+
+      <div class="field-pair">
+        <div>
           <input type="text" id="boulder-input" list="boulder-name-list" autocomplete="off"
-                 autocapitalize="words" placeholder="Boulder">
+                 autocapitalize="words" placeholder="Boulder" aria-label="Boulder">
           <datalist id="boulder-name-list"></datalist>
         </div>
-      </div>
-
-      <div id="known-climb-block" hidden>
-        <span class="field-name">Climbs on this boulder</span>
-        <div id="known-climb-buttons" class="chip-row"></div>
-      </div>
-
-      <label for="climb-name-input">Climb</label>
-      <input type="text" id="climb-name-input" autocomplete="off" autocapitalize="words"
-             placeholder="Name of the climb">
-
-      <span class="field-name" id="grade-label">Grade</span>
-      <div id="grade-buttons" class="chip-row" role="group" aria-labelledby="grade-label"></div>
-
-      <span class="field-name" id="result-label">Result</span>
-      <div class="chip-row" role="group" aria-labelledby="result-label">
-        <button type="button" id="send-yes-button" class="chip chip-wide">Sent</button>
-        <button type="button" id="send-no-button" class="chip chip-wide">Did not send</button>
-      </div>
-
-      <span class="field-name" id="place-label">Place</span>
-      <div class="chip-row" role="group" aria-labelledby="place-label">
-        <button type="button" id="outdoor-button" class="chip chip-wide">Outdoor</button>
-        <button type="button" id="indoor-button" class="chip chip-wide">Indoor gym</button>
-      </div>
-
-      <div id="coordinate-block">
-        <span class="field-name" id="format-label">Boulder location</span>
-        <div class="chip-row" role="group" aria-labelledby="format-label">
-          <button type="button" id="format-dd-button" class="chip chip-wide">DD</button>
-          <button type="button" id="format-ddm-button" class="chip chip-wide">DDM</button>
-          <button type="button" id="format-dms-button" class="chip chip-wide">DMS</button>
+        <div>
+          <input type="text" id="climb-name-input" autocomplete="off" autocapitalize="words"
+                 placeholder="Climb" aria-label="Climb">
         </div>
+      </div>
 
-        <div id="latitude-line" class="coordinate-line" style="margin-top:8px">
+      <div id="known-climb-block" class="compact-row" hidden>
+        <div id="known-climb-buttons" aria-label="Climbs on this boulder"></div>
+      </div>
+
+      <div id="grade-buttons" class="compact-row" role="group" aria-label="Grade"></div>
+
+      <div class="choice-row compact-row">
+        <button type="button" id="send-yes-button" class="chip">Sent</button>
+        <button type="button" id="send-no-button" class="chip">No send</button>
+        <button type="button" id="outdoor-button" class="chip">Outdoor</button>
+        <button type="button" id="indoor-button" class="chip">Indoor</button>
+      </div>
+
+      <div id="location-row" class="choice-row compact-row">
+        <button type="button" id="location-toggle-button" class="chip chip-toggle">Location off</button>
+        <button type="button" id="format-dd-button" class="chip">DD</button>
+        <button type="button" id="format-ddm-button" class="chip">DDM</button>
+        <button type="button" id="format-dms-button" class="chip">DMS</button>
+      </div>
+
+      <div id="coordinate-block" hidden>
+        <div id="latitude-line" class="coordinate-line">
           <span class="line-name">Lat</span>
           <input class="coordinate-box" id="latitude-box-1" inputmode="decimal" autocomplete="off">
           <input class="coordinate-box" id="latitude-box-2" inputmode="decimal" autocomplete="off">
           <input class="coordinate-box" id="latitude-box-3" inputmode="decimal" autocomplete="off">
           <button type="button" id="north-south-button" class="hemisphere-button">N</button>
         </div>
-
         <div id="longitude-line" class="coordinate-line">
           <span class="line-name">Lon</span>
           <input class="coordinate-box" id="longitude-box-1" inputmode="decimal" autocomplete="off">
@@ -378,17 +424,16 @@ input:focus, textarea:focus { outline: 2px solid var(--accent-color); outline-of
           <input class="coordinate-box" id="longitude-box-3" inputmode="decimal" autocomplete="off">
           <button type="button" id="east-west-button" class="hemisphere-button">W</button>
         </div>
-
-        <p id="decimal-readout" class="decimal-readout">No location set.</p>
-        <div class="button-row">
-          <button type="button" id="pin-location-button" class="button-quiet">Use GPS</button>
-          <button type="button" id="open-map-button" class="button-quiet" hidden>Open map</button>
+        <div class="readout-row">
+          <p id="decimal-readout" class="decimal-readout">No location set.</p>
+          <button type="button" id="pin-location-button" class="button-quiet">GPS</button>
+          <button type="button" id="open-map-button" class="button-quiet" hidden>Map</button>
           <button type="button" id="clear-location-button" class="button-quiet">Clear</button>
         </div>
       </div>
 
-      <label for="notes-input">Notes and beta</label>
-      <textarea id="notes-input" rows="2" placeholder="Optional"></textarea>
+      <input type="text" id="notes-input" class="compact-row" autocomplete="off"
+             placeholder="Notes and beta (optional)" aria-label="Notes and beta">
 
       <button type="button" id="save-climb-button" class="button-primary">Save climb</button>
     </div>
@@ -583,8 +628,10 @@ function cleanText(rawValue) {
  */
 function readSettings() {
   var defaultSettings = {
+    localeName: "",
     areaName: "",
     boulderName: "",
+    isLocationOn: false,
     coordinateFormat: "DMS",
     northOrSouth: "N",
     eastOrWest: "W"
@@ -651,10 +698,14 @@ function validateClimb(rawClimb) {
   if (rawClimb === null || typeof rawClimb !== "object") {
     return { climb: null, errorMessage: "The climb record is not an object." };
   }
+  var localeName = cleanText(rawClimb.localeName);
   var areaName = cleanText(rawClimb.areaName);
   var boulderName = cleanText(rawClimb.boulderName);
   var climbName = cleanText(rawClimb.climbName);
 
+  if (localeName.length === 0) {
+    return { climb: null, errorMessage: "The locale is empty. Enter a locale." };
+  }
   if (areaName.length === 0) {
     return { climb: null, errorMessage: "The area is empty. Enter an area." };
   }
@@ -709,6 +760,7 @@ function buildClimb(rawClimb, coordinateResult) {
       ? climbedAtIso
       : modifiedAtIso,
     isDeleted: rawClimb.isDeleted === true,
+    localeName: cleanText(rawClimb.localeName),
     areaName: cleanText(rawClimb.areaName),
     boulderName: cleanText(rawClimb.boulderName),
     climbName: cleanText(rawClimb.climbName),
@@ -763,7 +815,11 @@ function validateCoordinateFields(rawClimb) {
     });
   }
 
-  var rawAccuracy = Number(rawClimb.accuracyMeters);
+  /* An absent accuracy stays absent. Number(null) is 0, and 0 metres would
+     claim a perfect fix for a position that came from a guidebook. */
+  var rawAccuracy = isFilledValue(rawClimb.accuracyMeters) === true
+    ? Number(rawClimb.accuracyMeters)
+    : NaN;
   return {
     latitudeDegrees: latitudeDegrees,
     longitudeDegrees: longitudeDegrees,
@@ -1168,6 +1224,7 @@ function makeDecimalReadout(latitudeDegrees, longitudeDegrees) {
    says which copy is newer, and the removed mark carries a deletion. */
 var CSV_COLUMN_NAMES = [
   "climbed_at_iso",
+  "locale_name",
   "area_name",
   "boulder_name",
   "climb_name",
@@ -1219,6 +1276,7 @@ function makeCsvRow(climb) {
   }
   var rowValues = [
     climb.climbedAtIso,
+    climb.localeName,
     climb.areaName,
     climb.boulderName,
     climb.climbName,
@@ -1446,6 +1504,7 @@ function makeRawClimbFromRow(row, columnIndexByName) {
     climbedAtIso: readColumn("climbed_at_iso").trim(),
     modifiedAtIso: readColumn("modified_at_iso").trim(),
     isDeleted: readYesOrNo(readColumn("is_deleted")),
+    localeName: readColumn("locale_name"),
     areaName: readColumn("area_name"),
     boulderName: readColumn("boulder_name"),
     climbName: readColumn("climb_name"),
@@ -1635,11 +1694,12 @@ function countByArea(climbs) {
 
   for (var climbIndex = 0; climbIndex < climbs.length; climbIndex += 1) {
     var climb = climbs[climbIndex];
-    if (countByAreaName[climb.areaName] === undefined) {
-      countByAreaName[climb.areaName] =
-        { areaName: climb.areaName, climbCount: 0, sendCount: 0, boulderNames: {} };
+    var areaKey = makePlaceText(climb.localeName, climb.areaName);
+    if (countByAreaName[areaKey] === undefined) {
+      countByAreaName[areaKey] =
+        { areaName: areaKey, climbCount: 0, sendCount: 0, boulderNames: {} };
     }
-    var areaCount = countByAreaName[climb.areaName];
+    var areaCount = countByAreaName[areaKey];
     areaCount.climbCount += 1;
     areaCount.boulderNames[climb.boulderName] = true;
     if (climb.isSend === true) {
@@ -1685,7 +1745,7 @@ function groupIntoSessions(climbs) {
     var session = sessionByDate[dateOnly];
     session.climbCount += 1;
     session.pointTotal += countClimbPoints(climb);
-    session.areaNames[climb.areaName] = true;
+    session.areaNames[makePlaceText(climb.localeName, climb.areaName)] = true;
     if (climb.isSend === true) {
       session.sendCount += 1;
       session.sentGradeValues.push(climb.gradeValue);
@@ -1719,38 +1779,52 @@ function finishSessions(sessionByDate) {
 }
 
 /**
- * Collects the area names that the log already has.
+ * Joins a locale and an area the way the screen shows them.
+ * @param {string} localeName - The locale, such as "Joshua Tree".
+ * @param {string} areaName - The area, such as "Jumbo Rocks".
+ * @returns {string} Text such as "Joshua Tree \u00b7 Jumbo Rocks".
+ */
+function makePlaceText(localeName, areaName) {
+  return localeName + " \u00b7 " + areaName;
+}
+
+/**
+ * Collects the names that the log has at one level of the place tree. With
+ * no parent names it lists the locales. With a locale it lists the areas of
+ * that locale. With a locale and an area it lists the boulders.
  * @param {Array} climbs - Validated climb records.
+ * @param {string} localeName - The locale to look in, or empty for all.
+ * @param {string|null} areaName - The area to look in, or null for the areas.
  * @returns {Array} The names in alphabetical order.
  */
-function listAreaNames(climbs) {
+function listPlaceNames(climbs, localeName, areaName) {
   if (Array.isArray(climbs) === false) {
-    throw new Error("listAreaNames needs an array. Got " + typeof climbs + ".");
+    throw new Error("listPlaceNames needs an array. Got " + typeof climbs + ".");
   }
   var nameSet = {};
   for (var climbIndex = 0; climbIndex < climbs.length; climbIndex += 1) {
-    nameSet[climbs[climbIndex].areaName] = true;
+    var climb = climbs[climbIndex];
+    if (localeName === "") {
+      nameSet[climb.localeName] = true;
+    } else if (climb.localeName === localeName && areaName === null) {
+      nameSet[climb.areaName] = true;
+    } else if (climb.localeName === localeName && climb.areaName === areaName) {
+      nameSet[climb.boulderName] = true;
+    }
   }
   return Object.keys(nameSet).sort();
 }
 
 /**
- * Collects the boulder names of one area.
- * @param {Array} climbs - Validated climb records.
- * @param {string} areaName - The area to look in.
- * @returns {Array} The names in alphabetical order.
+ * Reports whether a climb is on one boulder.
+ * @param {object} climb - A validated climb record.
+ * @param {object} place - The localeName, areaName, and boulderName to match.
+ * @returns {boolean} True when all three names match.
  */
-function listBoulderNames(climbs, areaName) {
-  if (Array.isArray(climbs) === false) {
-    throw new Error("listBoulderNames needs an array. Got " + typeof climbs + ".");
-  }
-  var nameSet = {};
-  for (var climbIndex = 0; climbIndex < climbs.length; climbIndex += 1) {
-    if (climbs[climbIndex].areaName === areaName) {
-      nameSet[climbs[climbIndex].boulderName] = true;
-    }
-  }
-  return Object.keys(nameSet).sort();
+function isOnBoulder(climb, place) {
+  return climb.localeName === place.localeName &&
+    climb.areaName === place.areaName &&
+    climb.boulderName === place.boulderName;
 }
 
 /**
@@ -1758,11 +1832,10 @@ function listBoulderNames(climbs, areaName) {
  * gave each one last. The Log screen shows these as buttons, so that a repeat
  * of a climb is two taps.
  * @param {Array} climbs - Validated climb records, newest first.
- * @param {string} areaName - The area of the boulder.
- * @param {string} boulderName - The boulder.
+ * @param {object} place - The localeName, areaName, and boulderName.
  * @returns {Array} One entry for each climb name, in alphabetical order.
  */
-function listKnownClimbs(climbs, areaName, boulderName) {
+function listKnownClimbs(climbs, place) {
   if (Array.isArray(climbs) === false) {
     throw new Error("listKnownClimbs needs an array. Got " + typeof climbs + ".");
   }
@@ -1770,7 +1843,7 @@ function listKnownClimbs(climbs, areaName, boulderName) {
 
   for (var climbIndex = 0; climbIndex < climbs.length; climbIndex += 1) {
     var climb = climbs[climbIndex];
-    var isOnThisBoulder = climb.areaName === areaName && climb.boulderName === boulderName;
+    var isOnThisBoulder = isOnBoulder(climb, place);
     /* The records arrive newest first, so the first grade for a name is the
        one that the person gave most recently. Keep that one. */
     if (isOnThisBoulder === true && gradeByClimbName[climb.climbName] === undefined) {
@@ -1786,17 +1859,16 @@ function listKnownClimbs(climbs, areaName, boulderName) {
 /**
  * Finds the newest coordinates that the log has for one boulder.
  * @param {Array} climbs - Validated climb records, newest first.
- * @param {string} areaName - The area of the boulder.
- * @param {string} boulderName - The boulder.
+ * @param {object} place - The localeName, areaName, and boulderName.
  * @returns {object|null} The coordinates, or null when the boulder has none.
  */
-function findBoulderCoordinates(climbs, areaName, boulderName) {
+function findBoulderCoordinates(climbs, place) {
   if (Array.isArray(climbs) === false) {
     throw new Error("findBoulderCoordinates needs an array. Got " + typeof climbs + ".");
   }
   for (var climbIndex = 0; climbIndex < climbs.length; climbIndex += 1) {
     var climb = climbs[climbIndex];
-    var isOnThisBoulder = climb.areaName === areaName && climb.boulderName === boulderName;
+    var isOnThisBoulder = isOnBoulder(climb, place);
     if (isOnThisBoulder === true && climb.latitudeDegrees !== null) {
       return {
         latitudeDegrees: climb.latitudeDegrees,
@@ -1981,7 +2053,7 @@ function makeClimbRow(climb, onRemoveClimb) {
   var detail = makeElement("div", "climb-detail", "");
   detail.appendChild(makeElement("div", "climb-name", climb.climbName));
 
-  var placeParts = [climb.areaName, climb.boulderName];
+  var placeParts = [climb.localeName, climb.areaName, climb.boulderName];
   if (climb.isIndoor === true) {
     placeParts.push("indoor");
   }
@@ -2499,7 +2571,7 @@ function pinLocationFromGps(onMessage) {
 function resetPinButton() {
   var pinButton = findElement("pin-location-button");
   pinButton.disabled = false;
-  pinButton.textContent = "Use GPS";
+  pinButton.textContent = "GPS";
 }
 
 /**
@@ -2597,8 +2669,9 @@ function openMapForCoordinates(onMessage) {
 
    WHAT THIS SECTION DOES
      Joins the other sections together. It answers every tap, it keeps the
-     area and the boulder between climbs, it gets one GPS fix for each new
-     boulder, and it saves each climb the moment you tap Save.
+     locale, the area, and the boulder between climbs, it gets one GPS fix for
+     each new boulder when the location switch is on, and it saves each climb
+     the moment you tap Save.
 
    INPUTS
      Taps and text from the person.
@@ -2615,7 +2688,8 @@ function openMapForCoordinates(onMessage) {
      nothing. A full storage area shows a message that tells you to export.
 
    ASSUMPTIONS
-     One person, one phone. A computer merges the CSV files later.
+     One person, one phone. A computer merges the CSV files later. A climb
+     gets coordinates only when the location switch is on.
    ========================================================================== */
 
 var LOWEST_GRADE_VALUE = 0;
@@ -2628,7 +2702,7 @@ var SCREEN_NAMES = ["log", "climbs", "stats", "data"];
    REASON: The grade, the result, and the place must live from one tap to the
      next, and the browser gives no other place to keep them.
    LIMIT: One object. Every climb still passes validation before it is saved.
-   APPROVED-BY: (self, personal project)    DATE: 2026-09-02 */
+   APPROVED-BY: (self, personal project)    DATE: 2026-09-03 */
 var formState = { gradeValue: 0, isSend: true, isIndoor: false };
 
 /**
@@ -2666,6 +2740,28 @@ function showScreen(screenName) {
       String(tabButtons[tabIndex].dataset.screenName === screenName));
   }
   refreshScreens();
+}
+
+/**
+ * Reads the three place names from the Log screen.
+ * @returns {object} localeName, areaName, and boulderName, with no end spaces.
+ */
+function readPlace() {
+  return {
+    localeName: findElement("locale-input").value.trim(),
+    areaName: findElement("area-input").value.trim(),
+    boulderName: findElement("boulder-input").value.trim()
+  };
+}
+
+/**
+ * Reports whether all three place names are filled.
+ * @param {object} place - localeName, areaName, and boulderName.
+ * @returns {boolean} True when none of the three is empty.
+ */
+function isPlaceComplete(place) {
+  return place.localeName.length > 0 && place.areaName.length > 0 &&
+    place.boulderName.length > 0;
 }
 
 /**
@@ -2717,7 +2813,7 @@ function setGradeValue(gradeValue) {
 }
 
 /**
- * Marks the Sent choice or the Did-not-send choice.
+ * Marks the Sent choice or the No-send choice.
  * @param {boolean} isSend - True when the climb was sent.
  * @returns {void}
  */
@@ -2729,7 +2825,7 @@ function setSendChoice(isSend) {
 
 /**
  * Marks the Outdoor choice or the Indoor choice. An indoor gym problem has no
- * position, so the app hides the coordinate boxes for it.
+ * position, so the app hides the location row for it.
  * @param {boolean} isIndoor - True for an indoor gym.
  * @returns {void}
  */
@@ -2737,7 +2833,45 @@ function setPlaceChoice(isIndoor) {
   formState.isIndoor = isIndoor === true;
   findElement("indoor-button").setAttribute("aria-pressed", String(formState.isIndoor));
   findElement("outdoor-button").setAttribute("aria-pressed", String(formState.isIndoor === false));
-  findElement("coordinate-block").hidden = formState.isIndoor;
+  drawLocationVisibility();
+}
+
+/**
+ * Shows the location row and the coordinate block only when they apply. An
+ * indoor climb has no position at all. An outdoor climb shows the boxes only
+ * while the switch is on.
+ * @returns {void}
+ */
+function drawLocationVisibility() {
+  var isOn = isLocationOn();
+  findElement("location-row").hidden = formState.isIndoor;
+  findElement("coordinate-block").hidden = formState.isIndoor === true || isOn === false;
+  for (var nameIndex = 0; nameIndex < COORDINATE_FORMATS.length; nameIndex += 1) {
+    findElement("format-" + COORDINATE_FORMATS[nameIndex].toLowerCase() + "-button").hidden =
+      isOn === false;
+  }
+}
+
+/**
+ * Reports whether the location switch is on.
+ * @returns {boolean} True when a saved climb gets coordinates.
+ */
+function isLocationOn() {
+  return readSettings().isLocationOn === true;
+}
+
+/**
+ * Turns the location switch on or off. Off is the safe state: a climb saved
+ * with the switch off never gets coordinates. The switch stays between visits.
+ * @param {boolean} isOn - True to save coordinates with each climb.
+ * @returns {void}
+ */
+function setLocationOn(isOn) {
+  writeSettings({ isLocationOn: isOn === true });
+  var toggleButton = findElement("location-toggle-button");
+  toggleButton.textContent = isOn === true ? "Location on" : "Location off";
+  toggleButton.setAttribute("aria-pressed", String(isOn === true));
+  drawLocationVisibility();
 }
 
 /**
@@ -2763,8 +2897,7 @@ function fillNameList(listElementId, names) {
  * @returns {void}
  */
 function drawKnownClimbs(climbs) {
-  var knownClimbs = listKnownClimbs(climbs,
-    findElement("area-input").value.trim(), findElement("boulder-input").value.trim());
+  var knownClimbs = listKnownClimbs(climbs, readPlace());
   var buttonRow = findElement("known-climb-buttons");
   removeAllChildren(buttonRow);
   findElement("known-climb-block").hidden = knownClimbs.length === 0;
@@ -2810,9 +2943,10 @@ function drawStorageStatus(climbCount) {
  */
 function refreshScreens() {
   var climbs = readAllClimbs();
-  fillNameList("area-name-list", listAreaNames(climbs));
-  fillNameList("boulder-name-list",
-    listBoulderNames(climbs, findElement("area-input").value.trim()));
+  var place = readPlace();
+  fillNameList("locale-name-list", listPlaceNames(climbs, "", null));
+  fillNameList("area-name-list", listPlaceNames(climbs, place.localeName, null));
+  fillNameList("boulder-name-list", listPlaceNames(climbs, place.localeName, place.areaName));
   drawKnownClimbs(climbs);
   drawClimbList(findElement("climb-list"), climbs, handleRemoveClimb);
   drawStatistics(climbs);
@@ -2820,18 +2954,18 @@ function refreshScreens() {
 }
 
 /**
- * Answers a change of the area or the boulder. It remembers the two names, it
- * fills the position of a boulder that you pinned before, and it asks for one
- * GPS fix when the boulder is new.
+ * Answers a change of the locale, the area, or the boulder. It remembers the
+ * names, and when the location switch is on it fills the position of a
+ * boulder that you pinned before, or asks for one GPS fix for a new boulder.
  * @returns {void}
  */
-function handleLocationChange() {
-  var areaName = findElement("area-input").value.trim();
-  var boulderName = findElement("boulder-input").value.trim();
+function handlePlaceChange() {
+  var place = readPlace();
   var lastSettings = readSettings();
-  var isSameBoulder = lastSettings.areaName === areaName &&
-    lastSettings.boulderName === boulderName;
-  writeSettings({ areaName: areaName, boulderName: boulderName });
+  var isSameBoulder = lastSettings.localeName === place.localeName &&
+    lastSettings.areaName === place.areaName &&
+    lastSettings.boulderName === place.boulderName;
+  writeSettings(place);
   refreshScreens();
 
   if (isSameBoulder === true) {
@@ -2840,10 +2974,22 @@ function handleLocationChange() {
   /* A different rock has a different position. The old one must go, or the
      new boulder gets saved with the coordinates of the last one. */
   writeCoordinates(null, null);
-  if (areaName.length === 0 || boulderName.length === 0 || formState.isIndoor === true) {
+  findBoulderPosition(place);
+}
+
+/**
+ * Fills the position of a boulder from the log, or asks the GPS for one fix
+ * when the boulder is new. Does nothing when the switch is off, when the
+ * climb is indoor, or when a name is still empty.
+ * @param {object} place - localeName, areaName, and boulderName.
+ * @returns {void}
+ */
+function findBoulderPosition(place) {
+  if (isLocationOn() === false || formState.isIndoor === true ||
+      isPlaceComplete(place) === false) {
     return;
   }
-  var knownCoordinates = findBoulderCoordinates(readAllClimbs(), areaName, boulderName);
+  var knownCoordinates = findBoulderCoordinates(readAllClimbs(), place);
   if (knownCoordinates !== null) {
     lastAccuracyMeters = knownCoordinates.accuracyMeters;
     writeCoordinates(knownCoordinates.latitudeDegrees, knownCoordinates.longitudeDegrees);
@@ -2855,21 +3001,16 @@ function handleLocationChange() {
 }
 
 /**
- * Fills the position of the boulder that was open when the app closed. The
- * app does not ask the GPS on start, so that an open of the app in the car
- * does not pin the car park to a boulder.
+ * Answers a tap on the location switch. A turn to on looks for the position
+ * of the current boulder at once, so that the summary is never blank for
+ * a rock that you pinned before.
  * @returns {void}
  */
-function restoreBoulderCoordinates() {
-  var settings = readSettings();
-  if (settings.areaName.length === 0 || settings.boulderName.length === 0) {
-    return;
-  }
-  var knownCoordinates =
-    findBoulderCoordinates(readAllClimbs(), settings.areaName, settings.boulderName);
-  if (knownCoordinates !== null) {
-    lastAccuracyMeters = knownCoordinates.accuracyMeters;
-    writeCoordinates(knownCoordinates.latitudeDegrees, knownCoordinates.longitudeDegrees);
+function handleLocationToggle() {
+  var isNowOn = isLocationOn() === false;
+  setLocationOn(isNowOn);
+  if (isNowOn === true && readCoordinates().isEmpty === true) {
+    findBoulderPosition(readPlace());
   }
 }
 
@@ -2878,28 +3019,30 @@ function restoreBoulderCoordinates() {
  * @returns {void}
  */
 function handleSaveClimb() {
+  var savesCoordinates = isLocationOn() === true && formState.isIndoor === false;
   var coordinateResult = readCoordinates();
-  if (coordinateResult.errorMessage !== null) {
+  if (savesCoordinates === true && coordinateResult.errorMessage !== null) {
     showMessage(coordinateResult.errorMessage, true);
     return;
   }
-  var isOutdoor = formState.isIndoor === false;
+  var place = readPlace();
   var nowIso = new Date().toISOString();
   var rawClimb = {
     identifier: makeClimbIdentifier(nowIso, Math.random()),
     climbedAtIso: nowIso,
     modifiedAtIso: nowIso,
     isDeleted: false,
-    areaName: findElement("area-input").value,
-    boulderName: findElement("boulder-input").value,
+    localeName: place.localeName,
+    areaName: place.areaName,
+    boulderName: place.boulderName,
     climbName: findElement("climb-name-input").value,
     gradeValue: formState.gradeValue,
     isSend: formState.isSend,
     isIndoor: formState.isIndoor,
     notes: findElement("notes-input").value,
-    latitudeDegrees: isOutdoor === true ? coordinateResult.latitudeDegrees : null,
-    longitudeDegrees: isOutdoor === true ? coordinateResult.longitudeDegrees : null,
-    accuracyMeters: isOutdoor === true ? lastAccuracyMeters : null
+    latitudeDegrees: savesCoordinates === true ? coordinateResult.latitudeDegrees : null,
+    longitudeDegrees: savesCoordinates === true ? coordinateResult.longitudeDegrees : null,
+    accuracyMeters: savesCoordinates === true ? lastAccuracyMeters : null
   };
 
   try {
@@ -2918,8 +3061,8 @@ function handleSaveClimb() {
 }
 
 /**
- * Empties the climb name and the notes. The area, the boulder, the grade, and
- * the position stay, because the next climb is usually on the same rock.
+ * Empties the climb name and the notes. The place, the grade, and the
+ * position stay, because the next climb is usually on the same rock.
  * @returns {void}
  */
 function clearAfterSave() {
@@ -3036,8 +3179,7 @@ function applyImportedText(csvText, isReplace) {
       return;
     }
     var climbsToKeep = isReplace === true ? [] : readAllClimbsWithRemoved();
-    var mergedClimbs = mergeClimbs(climbsToKeep, importResult.climbs);
-    replaceAllClimbs(mergedClimbs);
+    replaceAllClimbs(mergeClimbs(climbsToKeep, importResult.climbs));
     refreshScreens();
 
     var messageText = makeImportMessage(importResult, readAllClimbs().length);
@@ -3066,22 +3208,32 @@ function makeImportMessage(importResult, logSize) {
 }
 
 /**
- * Connects every button and box, then draws the first screen.
+ * Fills the position of the boulder that was open when the app closed. The
+ * app does not ask the GPS on start, so that an open of the app in the car
+ * does not pin the car park to a boulder.
  * @returns {void}
  */
-function start() {
-  storageIsPersistent = testStorageIsPersistent();
-  buildGradeButtons();
-  setGradeValue(LOWEST_GRADE_VALUE);
-  setSendChoice(true);
-  setPlaceChoice(false);
-  connectCoordinateControls(showMessage);
-
+function restoreBoulderCoordinates() {
   var settings = readSettings();
-  findElement("area-input").value = settings.areaName;
-  findElement("boulder-input").value = settings.boulderName;
-  restoreBoulderCoordinates();
+  var place = {
+    localeName: settings.localeName, areaName: settings.areaName,
+    boulderName: settings.boulderName
+  };
+  if (isPlaceComplete(place) === false || isLocationOn() === false) {
+    return;
+  }
+  var knownCoordinates = findBoulderCoordinates(readAllClimbs(), place);
+  if (knownCoordinates !== null) {
+    lastAccuracyMeters = knownCoordinates.accuracyMeters;
+    writeCoordinates(knownCoordinates.latitudeDegrees, knownCoordinates.longitudeDegrees);
+  }
+}
 
+/**
+ * Connects the buttons of the Log screen.
+ * @returns {void}
+ */
+function connectLogScreen() {
   findElement("send-yes-button").addEventListener("click", function chooseSend() {
     setSendChoice(true);
   });
@@ -3094,9 +3246,33 @@ function start() {
   findElement("indoor-button").addEventListener("click", function chooseIndoor() {
     setPlaceChoice(true);
   });
-  findElement("area-input").addEventListener("change", handleLocationChange);
-  findElement("boulder-input").addEventListener("change", handleLocationChange);
+  findElement("locale-input").addEventListener("change", handlePlaceChange);
+  findElement("area-input").addEventListener("change", handlePlaceChange);
+  findElement("boulder-input").addEventListener("change", handlePlaceChange);
+  findElement("location-toggle-button").addEventListener("click", handleLocationToggle);
   findElement("save-climb-button").addEventListener("click", handleSaveClimb);
+}
+
+/**
+ * Connects every button and box, then draws the first screen.
+ * @returns {void}
+ */
+function start() {
+  storageIsPersistent = testStorageIsPersistent();
+  buildGradeButtons();
+  setGradeValue(LOWEST_GRADE_VALUE);
+  setSendChoice(true);
+  setPlaceChoice(false);
+  connectCoordinateControls(showMessage);
+
+  var settings = readSettings();
+  findElement("locale-input").value = settings.localeName;
+  findElement("area-input").value = settings.areaName;
+  findElement("boulder-input").value = settings.boulderName;
+  setLocationOn(settings.isLocationOn === true);
+  restoreBoulderCoordinates();
+
+  connectLogScreen();
   findElement("export-button").addEventListener("click", handleExport);
   findElement("import-add-button").addEventListener("click", handleImportMerge);
   findElement("import-replace-button").addEventListener("click", handleImportReplace);

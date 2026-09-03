@@ -30,7 +30,7 @@
 
 // Change this name after each edit of index.html. A new name makes the phone
 // get the new page. The old cache is then removed on activation.
-const CACHE_NAME = "climb-log-version-1";
+const CACHE_NAME = "climb-log-version-3";
 
 const APP_FILE_ADDRESSES = ["./", "./index.html"];
 
