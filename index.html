@@ -1,0 +1,3135 @@
+<!DOCTYPE html>
+<!--
+==============================================================================
+WHAT THIS FILE DOES
+  An offline log of boulder problems for one person. You enter the area, the
+  boulder, the climb, and the V grade. The app keeps the coordinates of each
+  boulder, from the GPS or from your guidebook. It saves each climb the moment
+  you tap Save. It writes a CSV file that you move to a computer.
+
+INPUTS
+  Taps and text from the person. The GPS position from the browser. A CSV file
+  that you select on the Data screen.
+
+OUTPUTS
+  The four screens of the app. A CSV file when you tap Export.
+
+SIDE EFFECTS
+  Writes the climb records to the storage of the browser. Asks the browser for
+  the position of the phone.
+
+FAILURE MODES
+  Safari blocks storage in Private Browsing mode: the app shows a warning and
+  keeps the climbs in memory only.
+  The GPS gives no fix: the app says so and you enter the coordinates by hand.
+  A CSV row that fails validation is rejected. The other rows still import.
+
+ASSUMPTIONS
+  The app is on an HTTPS address. Safari gives no GPS position and keeps no
+  offline copy for a page on a plain HTTP address.
+
+TRACEABILITY
+  Personal climbing log. No requirement document.
+
+OWNER
+  The person who climbs.
+
+DEVIATION: CCW-3.2 (a file is 500 lines or fewer, with one purpose)
+REASON: The app must go onto a phone with no computer. Every file is a
+  separate upload through Safari, and a partial upload gives a broken app.
+  Two files is the smallest count that still works offline, because a service
+  worker cannot be inside the page it controls.
+LIMIT: The file is cut into named sections with a banner comment on each one.
+  Each section keeps the header block that it would have as its own file.
+  Every function still obeys the 60-line limit. The file is split into modules
+  at the first edit from a computer.
+APPROVED-BY: (self, personal project)    DATE: 2026-09-02
+==============================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b1a18">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Climb Log">
+<title>Climb Log</title>
+<style>
+/* ==========================================================================
+   SECTION 1 OF 8 - STYLES
+   Plain on purpose. Targets are large because you tap them outdoors with cold
+   or chalky hands. Contrast is high because you read the screen in sunlight.
+   One accent color only. Everything else is a neutral gray.
+   ========================================================================== */
+
+:root {
+  --page-background: #faf9f7;
+  --panel-background: #ffffff;
+  --edge-color: #ddd9d3;
+  --text-color: #1b1a18;
+  --quiet-text-color: #6b6862;
+  --accent-color: #b4471f;
+  --accent-text-color: #ffffff;
+  --error-color: #9c2b16;
+  --send-color: #2f6b3f;
+  --tap-height: 48px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page-background: #161513;
+    --panel-background: #211f1d;
+    --edge-color: #38342f;
+    --text-color: #f2efea;
+    --quiet-text-color: #a29d95;
+    --accent-color: #d4633a;
+    --accent-text-color: #16150f;
+    --error-color: #e0785e;
+    --send-color: #6fbb85;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0 0 calc(74px + env(safe-area-inset-bottom));
+  background: var(--page-background);
+  color: var(--text-color);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 17px;
+  line-height: 1.45;
+  -webkit-text-size-adjust: 100%;
+}
+
+main { padding: 10px 14px 0; max-width: 760px; margin: 0 auto; }
+
+h2 { font-size: 22px; margin: 12px 0 10px; }
+h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;
+     color: var(--quiet-text-color); margin: 20px 0 8px; font-weight: 700; }
+
+label, .field-name {
+  display: block; font-size: 13px; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--quiet-text-color); margin: 16px 0 6px;
+}
+
+input[type="text"], textarea, input[type="file"] {
+  width: 100%;
+  min-height: var(--tap-height);
+  padding: 10px 12px;
+  border: 1px solid var(--edge-color);
+  border-radius: 8px;
+  background: var(--panel-background);
+  color: var(--text-color);
+  font-size: 17px;
+  font-family: inherit;
+}
+textarea { min-height: 64px; resize: vertical; }
+input:focus, textarea:focus { outline: 2px solid var(--accent-color); outline-offset: -1px; }
+
+.panel {
+  background: var(--panel-background);
+  border: 1px solid var(--edge-color);
+  border-radius: 12px;
+  padding: 2px 14px 18px;
+  margin-bottom: 14px;
+}
+.quiet-text { color: var(--quiet-text-color); font-size: 15px; margin: 6px 0; }
+.field-pair { display: flex; gap: 10px; }
+.field-pair > div { flex: 1 1 0; min-width: 0; }
+
+/* --- Buttons ---------------------------------------------------------- */
+
+.button-primary, .button-quiet {
+  min-height: var(--tap-height);
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 17px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+.button-primary {
+  display: block; width: 100%; margin-top: 20px; border: none;
+  background: var(--accent-color); color: var(--accent-text-color);
+}
+.button-quiet {
+  border: 1px solid var(--edge-color); background: var(--panel-background);
+  color: var(--text-color);
+}
+.button-primary:active, .button-quiet:active { opacity: 0.7; }
+.button-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.button-row .button-quiet { flex: 1 1 auto; }
+
+/* --- Chips: grades, choices, and saved climbs -------------------------- */
+
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.chip {
+  min-width: 52px;
+  min-height: var(--tap-height);
+  padding: 8px 10px;
+  border: 1px solid var(--edge-color);
+  border-radius: 8px;
+  background: var(--panel-background);
+  color: var(--text-color);
+  font-size: 16px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+.chip-wide { flex: 1 1 0; }
+.chip-climb { min-width: 0; font-weight: 500; }
+.chip-climb .chip-grade { color: var(--quiet-text-color); font-weight: 700; margin-left: 6px; }
+.chip[aria-pressed="true"] {
+  background: var(--accent-color); border-color: var(--accent-color);
+  color: var(--accent-text-color);
+}
+.chip[aria-pressed="true"] .chip-grade { color: var(--accent-text-color); }
+
+/* --- The coordinate boxes ---------------------------------------------- */
+
+.coordinate-line { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.coordinate-line .line-name {
+  flex: 0 0 30px; font-size: 13px; font-weight: 700; color: var(--quiet-text-color);
+}
+.coordinate-box {
+  flex: 1 1 0; min-width: 0; width: 100%;
+  min-height: var(--tap-height);
+  padding: 8px 6px;
+  border: 1px solid var(--edge-color);
+  border-radius: 8px;
+  background: var(--panel-background);
+  color: var(--text-color);
+  font-size: 17px;
+  font-family: inherit;
+  text-align: center;
+}
+.coordinate-box:focus { outline: 2px solid var(--accent-color); outline-offset: -1px; }
+.hemisphere-button {
+  flex: 0 0 44px; min-height: var(--tap-height);
+  border: 1px solid var(--edge-color); border-radius: 8px;
+  background: var(--panel-background); color: var(--text-color);
+  font-size: 16px; font-weight: 700; font-family: inherit; cursor: pointer;
+}
+.decimal-readout {
+  font-size: 15px; color: var(--quiet-text-color); margin: 8px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+.decimal-readout.is-error { color: var(--error-color); }
+
+/* --- The climb list ---------------------------------------------------- */
+
+.day-heading {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin: 22px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--edge-color);
+}
+.day-date { font-weight: 700; font-size: 16px; }
+.day-summary { font-size: 14px; color: var(--quiet-text-color); }
+
+.climb-row {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--panel-background); border: 1px solid var(--edge-color);
+  border-radius: 10px; padding: 10px 12px; margin-bottom: 8px;
+}
+.climb-grade {
+  flex: 0 0 auto; min-width: 46px; text-align: center; font-weight: 700;
+  font-size: 17px; padding: 6px 4px; border-radius: 6px; border: 1px solid var(--edge-color);
+}
+.climb-grade-send { color: var(--send-color); border-color: var(--send-color); }
+.climb-detail { flex: 1 1 auto; min-width: 0; }
+.climb-name { font-weight: 600; }
+.climb-place, .climb-note {
+  font-size: 14px; color: var(--quiet-text-color);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.remove-button {
+  flex: 0 0 auto; min-height: 40px; padding: 8px 12px;
+  border: 1px solid var(--edge-color); border-radius: 8px; background: transparent;
+  color: var(--error-color); font-size: 15px; font-family: inherit; cursor: pointer;
+}
+
+/* --- The numbers -------------------------------------------------------- */
+
+.total-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.total-cell {
+  flex: 1 1 90px; background: var(--panel-background); border: 1px solid var(--edge-color);
+  border-radius: 12px; padding: 12px; text-align: center;
+}
+.total-number { display: block; font-size: 28px; font-weight: 700; line-height: 1.1; }
+.total-name { display: block; font-size: 13px; color: var(--quiet-text-color); margin-top: 4px; }
+
+.bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.bar-name { flex: 0 0 44px; font-weight: 700; font-size: 15px; }
+.bar-track { flex: 1 1 auto; height: 18px; background: var(--edge-color); border-radius: 4px; }
+.bar-fill { height: 100%; background: var(--accent-color); border-radius: 4px; }
+.bar-count {
+  flex: 0 0 auto; font-size: 14px; color: var(--quiet-text-color);
+  min-width: 56px; text-align: right; font-variant-numeric: tabular-nums;
+}
+
+.list-row {
+  display: flex; justify-content: space-between; gap: 10px;
+  padding: 10px 0; border-bottom: 1px solid var(--edge-color);
+}
+.list-name { font-weight: 600; }
+.list-detail { font-size: 14px; color: var(--quiet-text-color); text-align: right; }
+
+/* --- Messages and tabs --------------------------------------------------- */
+
+.notice {
+  margin: 10px 14px 0; padding: 12px 14px; border-radius: 10px; font-size: 15px;
+  background: var(--panel-background); border: 1px solid var(--accent-color);
+}
+.notice-error { border-color: var(--error-color); color: var(--error-color); }
+
+#tab-bar {
+  position: fixed; left: 0; right: 0; bottom: 0; display: flex;
+  background: var(--panel-background); border-top: 1px solid var(--edge-color);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tab {
+  flex: 1 1 0; min-height: 58px; border: none; background: transparent;
+  color: var(--quiet-text-color); font-size: 14px; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+}
+.tab[aria-selected="true"] { color: var(--accent-color); }
+</style>
+</head>
+<body>
+
+<noscript>
+  <p class="notice notice-error">This app needs JavaScript. Turn it on in the browser settings.</p>
+</noscript>
+
+<div id="storage-warning" class="notice notice-error" hidden>
+  This browser does not save data. Your climbs go away when you close the app.
+  Turn off Private Browsing, then open the app again.
+</div>
+
+<div id="message-bar" class="notice" hidden></div>
+
+<main>
+
+  <!-- ===================== SCREEN 1: LOG A CLIMB ===================== -->
+  <section id="log-screen" class="screen">
+    <div class="panel">
+
+      <div class="field-pair">
+        <div>
+          <label for="area-input">Area</label>
+          <input type="text" id="area-input" list="area-name-list" autocomplete="off"
+                 autocapitalize="words" placeholder="Area">
+          <datalist id="area-name-list"></datalist>
+        </div>
+        <div>
+          <label for="boulder-input">Boulder</label>
+          <input type="text" id="boulder-input" list="boulder-name-list" autocomplete="off"
+                 autocapitalize="words" placeholder="Boulder">
+          <datalist id="boulder-name-list"></datalist>
+        </div>
+      </div>
+
+      <div id="known-climb-block" hidden>
+        <span class="field-name">Climbs on this boulder</span>
+        <div id="known-climb-buttons" class="chip-row"></div>
+      </div>
+
+      <label for="climb-name-input">Climb</label>
+      <input type="text" id="climb-name-input" autocomplete="off" autocapitalize="words"
+             placeholder="Name of the climb">
+
+      <span class="field-name" id="grade-label">Grade</span>
+      <div id="grade-buttons" class="chip-row" role="group" aria-labelledby="grade-label"></div>
+
+      <span class="field-name" id="result-label">Result</span>
+      <div class="chip-row" role="group" aria-labelledby="result-label">
+        <button type="button" id="send-yes-button" class="chip chip-wide">Sent</button>
+        <button type="button" id="send-no-button" class="chip chip-wide">Did not send</button>
+      </div>
+
+      <span class="field-name" id="place-label">Place</span>
+      <div class="chip-row" role="group" aria-labelledby="place-label">
+        <button type="button" id="outdoor-button" class="chip chip-wide">Outdoor</button>
+        <button type="button" id="indoor-button" class="chip chip-wide">Indoor gym</button>
+      </div>
+
+      <div id="coordinate-block">
+        <span class="field-name" id="format-label">Boulder location</span>
+        <div class="chip-row" role="group" aria-labelledby="format-label">
+          <button type="button" id="format-dd-button" class="chip chip-wide">DD</button>
+          <button type="button" id="format-ddm-button" class="chip chip-wide">DDM</button>
+          <button type="button" id="format-dms-button" class="chip chip-wide">DMS</button>
+        </div>
+
+        <div id="latitude-line" class="coordinate-line" style="margin-top:8px">
+          <span class="line-name">Lat</span>
+          <input class="coordinate-box" id="latitude-box-1" inputmode="decimal" autocomplete="off">
+          <input class="coordinate-box" id="latitude-box-2" inputmode="decimal" autocomplete="off">
+          <input class="coordinate-box" id="latitude-box-3" inputmode="decimal" autocomplete="off">
+          <button type="button" id="north-south-button" class="hemisphere-button">N</button>
+        </div>
+
+        <div id="longitude-line" class="coordinate-line">
+          <span class="line-name">Lon</span>
+          <input class="coordinate-box" id="longitude-box-1" inputmode="decimal" autocomplete="off">
+          <input class="coordinate-box" id="longitude-box-2" inputmode="decimal" autocomplete="off">
+          <input class="coordinate-box" id="longitude-box-3" inputmode="decimal" autocomplete="off">
+          <button type="button" id="east-west-button" class="hemisphere-button">W</button>
+        </div>
+
+        <p id="decimal-readout" class="decimal-readout">No location set.</p>
+        <div class="button-row">
+          <button type="button" id="pin-location-button" class="button-quiet">Use GPS</button>
+          <button type="button" id="open-map-button" class="button-quiet" hidden>Open map</button>
+          <button type="button" id="clear-location-button" class="button-quiet">Clear</button>
+        </div>
+      </div>
+
+      <label for="notes-input">Notes and beta</label>
+      <textarea id="notes-input" rows="2" placeholder="Optional"></textarea>
+
+      <button type="button" id="save-climb-button" class="button-primary">Save climb</button>
+    </div>
+  </section>
+
+  <!-- ===================== SCREEN 2: THE CLIMB LIST ===================== -->
+  <section id="climbs-screen" class="screen" hidden>
+    <h2>Climbs</h2>
+    <div id="climb-list"></div>
+  </section>
+
+  <!-- ===================== SCREEN 3: THE NUMBERS ===================== -->
+  <section id="stats-screen" class="screen" hidden>
+    <h2>Stats</h2>
+    <div id="total-block" class="total-row"></div>
+    <h3>Sends by grade</h3>
+    <div id="grade-block"></div>
+    <h3>Areas</h3>
+    <div id="area-block"></div>
+    <h3>Sessions</h3>
+    <div id="session-block"></div>
+  </section>
+
+  <!-- ===================== SCREEN 4: BACKUP AND RESTORE ===================== -->
+  <section id="data-screen" class="screen" hidden>
+    <h2>Data</h2>
+
+    <div class="panel">
+      <h3>Backup</h3>
+      <p class="quiet-text">The CSV file holds every climb. Keep it in iCloud Drive.</p>
+      <button type="button" id="export-button" class="button-primary">Export CSV</button>
+    </div>
+
+    <div class="panel">
+      <h3>Restore</h3>
+      <p class="quiet-text">Select a CSV file that this app exported.</p>
+      <input type="file" id="import-file-input" accept=".csv,text/csv">
+      <div class="button-row">
+        <button type="button" id="import-add-button" class="button-quiet">Merge into log</button>
+        <button type="button" id="import-replace-button" class="button-quiet">Replace log</button>
+      </div>
+      <p id="import-result" class="quiet-text"></p>
+    </div>
+
+    <div class="panel">
+      <h3>Status</h3>
+      <p id="storage-status" class="quiet-text"></p>
+    </div>
+  </section>
+
+</main>
+
+<nav id="tab-bar">
+  <button type="button" class="tab" data-screen-name="log">Log</button>
+  <button type="button" class="tab" data-screen-name="climbs">Climbs</button>
+  <button type="button" class="tab" data-screen-name="stats">Stats</button>
+  <button type="button" class="tab" data-screen-name="data">Data</button>
+</nav>
+
+<script>
+"use strict";
+/* ==========================================================================
+   SECTION 2 OF 8 - STORAGE
+
+   WHAT THIS SECTION DOES
+     Holds the climbing log on the phone. It reads and writes every climb
+     record, and it remembers the area, the boulder, the coordinate format,
+     and the two hemispheres that you used last.
+
+   INPUTS
+     Climb records from the log form and from a CSV file.
+
+   OUTPUTS
+     An array of validated climb records, newest first, with the removed
+     climbs left out.
+
+   SIDE EFFECTS
+     Writes to the storage of the browser under keys that start with
+     "climbTracker.".
+
+   FAILURE MODES
+     Safari blocks storage in Private Browsing mode. The app then keeps the
+     records in memory only and shows a warning.
+     The storage fills up: the write raises an error that tells the person to
+     export the log.
+
+   ASSUMPTIONS
+     One person uses one phone. A computer merges the CSV files later.
+   ========================================================================== */
+
+var CLIMB_RECORD_STORAGE_KEY = "climbTracker.climbs";
+var SETTING_STORAGE_KEY = "climbTracker.settings";
+
+/* 20000 climbs is more than a lifetime of logging. The bound stops a bad
+   import file from filling the storage of the phone. */
+var MAXIMUM_CLIMB_COUNT = 20000;
+var MINIMUM_GRADE_VALUE = 0;
+var MAXIMUM_GRADE_VALUE = 17;
+var MAXIMUM_TEXT_LENGTH = 500;
+
+/* Safari in Private Browsing mode rejects every write. Without this map the
+   app raises an error on the first save. */
+var inMemoryFallbackStore = {};
+var storageIsPersistent = true;
+
+/**
+ * Makes sure that the browser accepts a write to localStorage.
+ * @returns {boolean} True when localStorage works.
+ */
+function testStorageIsPersistent() {
+  var testKey = "climbTracker.storageTest";
+  try {
+    window.localStorage.setItem(testKey, "1");
+    window.localStorage.removeItem(testKey);
+    return true;
+  } catch (storageError) {
+    console.warn("Storage is not persistent: " + storageError.message);
+    return false;
+  }
+}
+
+/**
+ * Reads one text value from the store.
+ * @param {string} storageKey - The key to read.
+ * @returns {string|null} The value, or null when the key is absent.
+ */
+function readTextValue(storageKey) {
+  if (typeof storageKey !== "string" || storageKey.length === 0) {
+    throw new Error("readTextValue needs a key. Got an empty value.");
+  }
+  if (storageIsPersistent === false) {
+    return Object.prototype.hasOwnProperty.call(inMemoryFallbackStore, storageKey)
+      ? inMemoryFallbackStore[storageKey]
+      : null;
+  }
+  return window.localStorage.getItem(storageKey);
+}
+
+/**
+ * Writes one text value to the store.
+ * @param {string} storageKey - The key to write.
+ * @param {string} textValue - The value to write.
+ * @returns {void}
+ * @throws {Error} When the storage of the phone is full.
+ */
+function writeTextValue(storageKey, textValue) {
+  if (typeof textValue !== "string") {
+    throw new Error("writeTextValue needs text. Got " + typeof textValue + ".");
+  }
+  if (storageIsPersistent === false) {
+    inMemoryFallbackStore[storageKey] = textValue;
+    return;
+  }
+  try {
+    window.localStorage.setItem(storageKey, textValue);
+  } catch (storageError) {
+    /* The storage filled up while the app was in use. Keep the value in
+       memory so that the current climb is not lost, then tell the person. */
+    storageIsPersistent = false;
+    inMemoryFallbackStore[storageKey] = textValue;
+    throw new Error(
+      "The phone rejected the write because its storage is full. " +
+      "Export your climbs to CSV now, then free space on the phone."
+    );
+  }
+}
+
+/**
+ * Reports whether the climb records survive a restart of the app.
+ * @returns {boolean} True when the records are on disk.
+ */
+function getStorageIsPersistent() {
+  return storageIsPersistent;
+}
+
+/**
+ * Cuts text to the maximum length and removes the space at each end.
+ * @param {*} rawValue - Any value from a form field or a CSV file.
+ * @returns {string} Clean text, never longer than MAXIMUM_TEXT_LENGTH.
+ */
+function cleanText(rawValue) {
+  if (typeof rawValue !== "string") {
+    return "";
+  }
+  return rawValue.trim().slice(0, MAXIMUM_TEXT_LENGTH);
+}
+
+/**
+ * Reads the settings that stay between visits: the area, the boulder, the
+ * coordinate format, and the two hemispheres.
+ * @returns {object} The settings, with a value for every field.
+ */
+function readSettings() {
+  var defaultSettings = {
+    areaName: "",
+    boulderName: "",
+    coordinateFormat: "DMS",
+    northOrSouth: "N",
+    eastOrWest: "W"
+  };
+  var storedText = readTextValue(SETTING_STORAGE_KEY);
+  if (storedText === null || storedText.length === 0) {
+    return defaultSettings;
+  }
+  try {
+    var storedSettings = JSON.parse(storedText);
+    return Object.assign(defaultSettings, storedSettings);
+  } catch (parseError) {
+    /* Damaged settings are not worth a crash. The defaults are correct for a
+       person in North America, and the person can change them again. */
+    console.warn("The stored settings are damaged: " + parseError.message);
+    return defaultSettings;
+  }
+}
+
+/**
+ * Writes the settings that stay between visits.
+ * @param {object} newSettings - The fields to change. Other fields are kept.
+ * @returns {void}
+ */
+function writeSettings(newSettings) {
+  if (newSettings === null || typeof newSettings !== "object") {
+    throw new Error("writeSettings needs an object. Got " + typeof newSettings + ".");
+  }
+  var mergedSettings = Object.assign(readSettings(), newSettings);
+  writeTextValue(SETTING_STORAGE_KEY, JSON.stringify(mergedSettings));
+}
+
+/**
+ * Makes a unique identifier for one climb record.
+ * @param {string} nowIso - The current time in ISO format.
+ * @param {number} randomFraction - A number from 0 up to 1.
+ * @returns {string} An identifier such as "climb-1756800000000-4f2c9".
+ */
+function makeClimbIdentifier(nowIso, randomFraction) {
+  if (typeof nowIso !== "string" || nowIso.length === 0) {
+    throw new Error("makeClimbIdentifier needs a time. Got an empty value.");
+  }
+  if (typeof randomFraction !== "number" || randomFraction < 0 || randomFraction >= 1) {
+    throw new Error("makeClimbIdentifier needs a fraction from 0 up to 1.");
+  }
+  var identifier = "climb-" + Date.parse(nowIso) + "-" +
+    Math.floor(randomFraction * 1000000).toString(36);
+
+  /* Postcondition: a short identifier would let two records overwrite each
+     other during a merge. */
+  if (identifier.length < 10) {
+    throw new Error("makeClimbIdentifier built a short identifier: " + identifier + ".");
+  }
+  return identifier;
+}
+
+/**
+ * Checks one raw climb record and converts it to a typed record.
+ * Every record from the form and from a CSV file passes through here.
+ * @param {object} rawClimb - Untrusted values.
+ * @returns {object} An object with climb and errorMessage. One is always null.
+ */
+function validateClimb(rawClimb) {
+  if (rawClimb === null || typeof rawClimb !== "object") {
+    return { climb: null, errorMessage: "The climb record is not an object." };
+  }
+  var areaName = cleanText(rawClimb.areaName);
+  var boulderName = cleanText(rawClimb.boulderName);
+  var climbName = cleanText(rawClimb.climbName);
+
+  if (areaName.length === 0) {
+    return { climb: null, errorMessage: "The area is empty. Enter an area." };
+  }
+  if (boulderName.length === 0) {
+    return { climb: null, errorMessage: "The boulder is empty. Enter a boulder." };
+  }
+  if (climbName.length === 0) {
+    return { climb: null, errorMessage: "The climb is empty. Enter a climb name." };
+  }
+
+  var gradeValue = Number(rawClimb.gradeValue);
+  if (Number.isInteger(gradeValue) === false) {
+    return { climb: null, errorMessage: "The grade is not a whole number. Select a V grade." };
+  }
+  if (gradeValue < MINIMUM_GRADE_VALUE || gradeValue > MAXIMUM_GRADE_VALUE) {
+    return {
+      climb: null,
+      errorMessage: "The grade is " + gradeValue + ". Select a grade from V0 to V17."
+    };
+  }
+
+  var climbedAtIso = cleanText(rawClimb.climbedAtIso);
+  if (Number.isNaN(Date.parse(climbedAtIso)) === true) {
+    return {
+      climb: null,
+      errorMessage: "The date is not readable: " + climbedAtIso + ". Use an ISO date."
+    };
+  }
+
+  var coordinateResult = validateCoordinateFields(rawClimb);
+  if (coordinateResult.errorMessage !== null) {
+    return { climb: null, errorMessage: coordinateResult.errorMessage };
+  }
+  return { climb: buildClimb(rawClimb, coordinateResult), errorMessage: null };
+}
+
+/**
+ * Builds the final climb record from values that already passed validation.
+ * @param {object} rawClimb - The checked values.
+ * @param {object} coordinateResult - The checked coordinates.
+ * @returns {object} The climb record.
+ */
+function buildClimb(rawClimb, coordinateResult) {
+  var climbedAtIso = cleanText(rawClimb.climbedAtIso);
+  var modifiedAtIso = cleanText(rawClimb.modifiedAtIso);
+  var climb = {
+    identifier: cleanText(rawClimb.identifier),
+    climbedAtIso: climbedAtIso,
+    /* A record with no modified time comes from an older file or from a
+       person who wrote the row by hand. The climb time is the best guess. */
+    modifiedAtIso: Number.isNaN(Date.parse(modifiedAtIso)) === true
+      ? climbedAtIso
+      : modifiedAtIso,
+    isDeleted: rawClimb.isDeleted === true,
+    areaName: cleanText(rawClimb.areaName),
+    boulderName: cleanText(rawClimb.boulderName),
+    climbName: cleanText(rawClimb.climbName),
+    gradeValue: Number(rawClimb.gradeValue),
+    isSend: rawClimb.isSend === true,
+    isIndoor: rawClimb.isIndoor === true,
+    notes: cleanText(rawClimb.notes),
+    latitudeDegrees: coordinateResult.latitudeDegrees,
+    longitudeDegrees: coordinateResult.longitudeDegrees,
+    accuracyMeters: coordinateResult.accuracyMeters
+  };
+  if (climb.identifier.length === 0) {
+    climb.identifier = makeClimbIdentifier(climbedAtIso, Math.random());
+  }
+  return climb;
+}
+
+/**
+ * Checks the three coordinate fields of one raw climb record.
+ * Coordinates are optional. An indoor climb has none.
+ * @param {object} rawClimb - Untrusted values.
+ * @returns {object} The three numbers, or nulls, plus an error message.
+ */
+function validateCoordinateFields(rawClimb) {
+  var emptyResult = {
+    latitudeDegrees: null, longitudeDegrees: null, accuracyMeters: null, errorMessage: null
+  };
+  var hasLatitude = isFilledValue(rawClimb.latitudeDegrees);
+  var hasLongitude = isFilledValue(rawClimb.longitudeDegrees);
+
+  if (hasLatitude === false && hasLongitude === false) {
+    return emptyResult;
+  }
+  if (hasLatitude !== hasLongitude) {
+    return Object.assign({}, emptyResult, {
+      errorMessage: "The record has one coordinate only. Give both, or give neither."
+    });
+  }
+
+  var latitudeDegrees = Number(rawClimb.latitudeDegrees);
+  var longitudeDegrees = Number(rawClimb.longitudeDegrees);
+  if (Number.isFinite(latitudeDegrees) === false ||
+      latitudeDegrees < -90 || latitudeDegrees > 90) {
+    return Object.assign({}, emptyResult, {
+      errorMessage: "The latitude is " + rawClimb.latitudeDegrees + ". It must be -90 to 90."
+    });
+  }
+  if (Number.isFinite(longitudeDegrees) === false ||
+      longitudeDegrees < -180 || longitudeDegrees > 180) {
+    return Object.assign({}, emptyResult, {
+      errorMessage: "The longitude is " + rawClimb.longitudeDegrees + ". It must be -180 to 180."
+    });
+  }
+
+  var rawAccuracy = Number(rawClimb.accuracyMeters);
+  return {
+    latitudeDegrees: latitudeDegrees,
+    longitudeDegrees: longitudeDegrees,
+    accuracyMeters: Number.isFinite(rawAccuracy) === true && rawAccuracy >= 0 ? rawAccuracy : null,
+    errorMessage: null
+  };
+}
+
+/**
+ * Reports whether a value from a form or a file holds something.
+ * @param {*} rawValue - Any value.
+ * @returns {boolean} True when the value is not empty and not null.
+ */
+function isFilledValue(rawValue) {
+  if (rawValue === null || rawValue === undefined) {
+    return false;
+  }
+  return String(rawValue).trim().length > 0;
+}
+
+/**
+ * Reads every climb record from the store, including the removed ones.
+ * A record that fails validation is dropped, because one broken record must
+ * not stop the whole log from opening.
+ * @returns {Array} Validated climb records, newest first.
+ */
+function readAllClimbsWithRemoved() {
+  var storedText = readTextValue(CLIMB_RECORD_STORAGE_KEY);
+  if (storedText === null || storedText.length === 0) {
+    return [];
+  }
+  var parsedRecords = [];
+  try {
+    parsedRecords = JSON.parse(storedText);
+  } catch (parseError) {
+    /* The stored text is damaged. An empty log is better than a crash on
+       start, and the CSV export is the real backup. */
+    console.error("The stored climb log is damaged: " + parseError.message);
+    return [];
+  }
+  if (Array.isArray(parsedRecords) === false) {
+    return [];
+  }
+
+  var validClimbs = [];
+  var recordCount = Math.min(parsedRecords.length, MAXIMUM_CLIMB_COUNT);
+  for (var recordIndex = 0; recordIndex < recordCount; recordIndex += 1) {
+    var result = validateClimb(parsedRecords[recordIndex]);
+    if (result.climb !== null) {
+      validClimbs.push(result.climb);
+    }
+  }
+  return sortClimbsNewestFirst(validClimbs);
+}
+
+/**
+ * Reads the climb records that the person still has, newest first.
+ * A removed climb stays in the file as a mark for the computer, but it is
+ * never shown and never counted.
+ * @returns {Array} Validated climb records.
+ */
+function readAllClimbs() {
+  return readAllClimbsWithRemoved().filter(function isKept(climb) {
+    return climb.isDeleted === false;
+  });
+}
+
+/**
+ * Sorts climb records so that the newest one is first.
+ * @param {Array} climbs - Validated climb records.
+ * @returns {Array} A new sorted array. The input is not changed.
+ */
+function sortClimbsNewestFirst(climbs) {
+  if (Array.isArray(climbs) === false) {
+    throw new Error("sortClimbsNewestFirst needs an array. Got " + typeof climbs + ".");
+  }
+  return climbs.slice().sort(function compareByDate(firstClimb, secondClimb) {
+    return Date.parse(secondClimb.climbedAtIso) - Date.parse(firstClimb.climbedAtIso);
+  });
+}
+
+/**
+ * Writes the full set of climb records to the store.
+ * @param {Array} climbs - Validated climb records.
+ * @returns {void}
+ * @throws {Error} When the count is above the limit, or the phone rejects it.
+ */
+function writeAllClimbs(climbs) {
+  if (Array.isArray(climbs) === false) {
+    throw new Error("writeAllClimbs needs an array. Got " + typeof climbs + ".");
+  }
+  if (climbs.length > MAXIMUM_CLIMB_COUNT) {
+    throw new Error(
+      "The log has " + climbs.length + " climbs. The limit is " + MAXIMUM_CLIMB_COUNT +
+      ". Export to CSV, then start a new log."
+    );
+  }
+  writeTextValue(CLIMB_RECORD_STORAGE_KEY, JSON.stringify(climbs));
+}
+
+/**
+ * Adds one climb record to the log.
+ * @param {object} rawClimb - Untrusted values from the log form.
+ * @returns {object} An object with climb and errorMessage.
+ */
+function addClimb(rawClimb) {
+  var result = validateClimb(rawClimb);
+  if (result.climb === null) {
+    return result;
+  }
+  var climbs = readAllClimbsWithRemoved();
+  climbs.push(result.climb);
+  writeAllClimbs(sortClimbsNewestFirst(climbs));
+  return result;
+}
+
+/**
+ * Marks one climb as removed. The record stays in the file with the removed
+ * mark, so that a computer can apply the same removal to its own copy.
+ * @param {string} identifier - The identifier of the climb.
+ * @param {string} nowIso - The current time in ISO format.
+ * @returns {boolean} True when one record was marked.
+ */
+function removeClimb(identifier, nowIso) {
+  if (typeof identifier !== "string" || identifier.length === 0) {
+    throw new Error("removeClimb needs an identifier. Got an empty value.");
+  }
+  var climbs = readAllClimbsWithRemoved();
+  var wasFound = false;
+
+  for (var climbIndex = 0; climbIndex < climbs.length; climbIndex += 1) {
+    if (climbs[climbIndex].identifier === identifier) {
+      climbs[climbIndex].isDeleted = true;
+      climbs[climbIndex].modifiedAtIso = nowIso;
+      wasFound = true;
+    }
+  }
+  if (wasFound === false) {
+    return false;
+  }
+  writeAllClimbs(climbs);
+  return true;
+}
+
+/**
+ * Replaces the whole log. The CSV restore uses this.
+ * @param {Array} climbs - Validated climb records.
+ * @returns {void}
+ */
+function replaceAllClimbs(climbs) {
+  writeAllClimbs(sortClimbsNewestFirst(climbs));
+}
+
+/* ==========================================================================
+   SECTION 3 OF 8 - COORDINATES
+
+   WHAT THIS SECTION DOES
+     Converts between the three ways that a guidebook writes a position and
+     the one way that the file keeps it. The three ways are DD (decimal
+     degrees), DDM (degrees and decimal minutes), and DMS (degrees, minutes,
+     and seconds). The file always keeps decimal degrees with a sign.
+
+   INPUTS
+     The digits from the coordinate boxes, the coordinate format, and the two
+     hemisphere letters. Or a decimal position from the GPS.
+
+   OUTPUTS
+     A latitude and a longitude in decimal degrees. Or the parts to put in
+     the boxes.
+
+   SIDE EFFECTS
+     None. Every function here gives the same result from the same input.
+
+   FAILURE MODES
+     Minutes or seconds of 60 or more are rejected with a message. A latitude
+     above 90 or a longitude above 180 is rejected. A part that is not a
+     number is rejected.
+
+   ASSUMPTIONS
+     The position is a latitude and a longitude. UTM, MGRS, and national grids
+     are not supported.
+   ========================================================================== */
+
+var COORDINATE_FORMATS = ["DD", "DDM", "DMS"];
+var MINUTES_IN_ONE_DEGREE = 60;
+var SECONDS_IN_ONE_MINUTE = 60;
+var SECONDS_IN_ONE_DEGREE = 3600;
+
+/* How many characters each box holds, for each format. The focus moves to the
+   next box when a box is full, so that you type the numbers and nothing else.
+   Longitude degrees hold three characters because they reach 180. */
+var BOX_WIDTHS = {
+  DD: { latitude: [9], longitude: [10] },
+  DDM: { latitude: [2, 6], longitude: [3, 6] },
+  DMS: { latitude: [2, 2, 5], longitude: [3, 2, 5] }
+};
+
+/* What each box means, shown as the placeholder text. */
+var BOX_NAMES = {
+  DD: { latitude: ["37.130120"], longitude: ["118.574330"] },
+  DDM: { latitude: ["37", "07.807"], longitude: ["118", "34.460"] },
+  DMS: { latitude: ["37", "07", "48.4"], longitude: ["118", "34", "27.6"] }
+};
+
+/**
+ * Reports how many boxes one format uses for one line.
+ * @param {string} coordinateFormat - "DD", "DDM", or "DMS".
+ * @param {string} lineName - "latitude" or "longitude".
+ * @returns {number} A count from 1 to 3.
+ */
+function countBoxes(coordinateFormat, lineName) {
+  if (COORDINATE_FORMATS.indexOf(coordinateFormat) < 0) {
+    throw new Error("countBoxes got an unknown format: " + coordinateFormat + ".");
+  }
+  if (lineName !== "latitude" && lineName !== "longitude") {
+    throw new Error("countBoxes got an unknown line: " + lineName + ".");
+  }
+  return BOX_WIDTHS[coordinateFormat][lineName].length;
+}
+
+/**
+ * Converts the parts of one coordinate line to decimal degrees.
+ * @param {Array} partTexts - The text of each box, in order.
+ * @param {string} coordinateFormat - "DD", "DDM", or "DMS".
+ * @param {number} signValue - 1 for north or east, -1 for south or west.
+ * @returns {object} An object with degreeValue and errorMessage.
+ */
+function makeDecimalDegrees(partTexts, coordinateFormat, signValue) {
+  if (Array.isArray(partTexts) === false) {
+    throw new Error("makeDecimalDegrees needs an array. Got " + typeof partTexts + ".");
+  }
+  if (signValue !== 1 && signValue !== -1) {
+    throw new Error("makeDecimalDegrees needs a sign of 1 or -1. Got " + signValue + ".");
+  }
+
+  var partNumbers = [];
+  for (var partIndex = 0; partIndex < partTexts.length; partIndex += 1) {
+    var partText = String(partTexts[partIndex]).trim();
+    /* An empty box after the first one counts as zero. A guidebook that gives
+       "37 07" and no seconds is complete. */
+    var partNumber = partText.length === 0 ? 0 : Number(partText);
+    if (Number.isFinite(partNumber) === false || partNumber < 0) {
+      return { degreeValue: null, errorMessage: "\"" + partText + "\" is not a number." };
+    }
+    partNumbers.push(partNumber);
+  }
+
+  var rangeError = findPartRangeError(partNumbers, coordinateFormat);
+  if (rangeError !== null) {
+    return { degreeValue: null, errorMessage: rangeError };
+  }
+  return { degreeValue: joinParts(partNumbers, coordinateFormat) * signValue, errorMessage: null };
+}
+
+/**
+ * Finds a part that is outside its range.
+ * @param {Array} partNumbers - The numbers from the boxes.
+ * @param {string} coordinateFormat - "DD", "DDM", or "DMS".
+ * @returns {string|null} The message, or null when every part is in range.
+ */
+function findPartRangeError(partNumbers, coordinateFormat) {
+  if (coordinateFormat === "DDM" && partNumbers[1] >= MINUTES_IN_ONE_DEGREE) {
+    return "The minutes are " + partNumbers[1] + ". Minutes must be less than 60.";
+  }
+  if (coordinateFormat === "DMS") {
+    if (partNumbers[1] >= MINUTES_IN_ONE_DEGREE) {
+      return "The minutes are " + partNumbers[1] + ". Minutes must be less than 60.";
+    }
+    if (partNumbers[2] >= SECONDS_IN_ONE_MINUTE) {
+      return "The seconds are " + partNumbers[2] + ". Seconds must be less than 60.";
+    }
+  }
+  return null;
+}
+
+/**
+ * Adds the parts of one coordinate together.
+ * @param {Array} partNumbers - The numbers from the boxes.
+ * @param {string} coordinateFormat - "DD", "DDM", or "DMS".
+ * @returns {number} The size of the angle in degrees, with no sign.
+ */
+function joinParts(partNumbers, coordinateFormat) {
+  if (coordinateFormat === "DD") {
+    return partNumbers[0];
+  }
+  if (coordinateFormat === "DDM") {
+    return partNumbers[0] + (partNumbers[1] / MINUTES_IN_ONE_DEGREE);
+  }
+  return partNumbers[0] +
+    (partNumbers[1] / MINUTES_IN_ONE_DEGREE) +
+    (partNumbers[2] / SECONDS_IN_ONE_DEGREE);
+}
+
+/**
+ * Converts decimal degrees to the parts that the boxes show.
+ * @param {number} degreeValue - The position in decimal degrees, with a sign.
+ * @param {string} coordinateFormat - "DD", "DDM", or "DMS".
+ * @returns {Array} The text for each box, in order.
+ */
+function makeCoordinateParts(degreeValue, coordinateFormat) {
+  if (Number.isFinite(degreeValue) === false) {
+    throw new Error("makeCoordinateParts needs a number. Got " + degreeValue + ".");
+  }
+  var sizeValue = Math.abs(degreeValue);
+
+  if (coordinateFormat === "DD") {
+    return [sizeValue.toFixed(6)];
+  }
+  if (coordinateFormat === "DDM") {
+    var wholeDegrees = Math.floor(sizeValue);
+    var decimalMinutes = (sizeValue - wholeDegrees) * MINUTES_IN_ONE_DEGREE;
+    return carryMinutes(wholeDegrees, decimalMinutes);
+  }
+  return makeDegreeMinuteSecondParts(sizeValue);
+}
+
+/**
+ * Moves 60.000 minutes up into the degrees. Rounding to three places can turn
+ * 59.9999 into 60.000, and "37 60.000" is not a position that a person reads.
+ * @param {number} wholeDegrees - The whole degrees.
+ * @param {number} decimalMinutes - The minutes, with a decimal part.
+ * @returns {Array} The two parts as text.
+ */
+function carryMinutes(wholeDegrees, decimalMinutes) {
+  var minuteText = decimalMinutes.toFixed(3);
+  if (Number(minuteText) >= MINUTES_IN_ONE_DEGREE) {
+    return [String(wholeDegrees + 1), "0.000"];
+  }
+  return [String(wholeDegrees), minuteText];
+}
+
+/**
+ * Converts a size in degrees to degrees, minutes, and seconds.
+ * @param {number} sizeValue - The size of the angle, with no sign.
+ * @returns {Array} The three parts as text.
+ */
+function makeDegreeMinuteSecondParts(sizeValue) {
+  var wholeDegrees = Math.floor(sizeValue);
+  var wholeMinutes = Math.floor((sizeValue - wholeDegrees) * MINUTES_IN_ONE_DEGREE);
+  var decimalSeconds =
+    (sizeValue - wholeDegrees - (wholeMinutes / MINUTES_IN_ONE_DEGREE)) * SECONDS_IN_ONE_DEGREE;
+  var secondText = decimalSeconds.toFixed(1);
+
+  /* The same carry problem as the minutes. 59.96 seconds rounds to 60.0. */
+  if (Number(secondText) >= SECONDS_IN_ONE_MINUTE) {
+    secondText = "0.0";
+    wholeMinutes += 1;
+  }
+  if (wholeMinutes >= MINUTES_IN_ONE_DEGREE) {
+    wholeMinutes = 0;
+    wholeDegrees += 1;
+  }
+  return [String(wholeDegrees), String(wholeMinutes), secondText];
+}
+
+/**
+ * Writes a position the way a person reads it, for the line under the boxes.
+ * @param {number} latitudeDegrees - The latitude in decimal degrees.
+ * @param {number} longitudeDegrees - The longitude in decimal degrees.
+ * @returns {string} Text such as "37.130120, -118.574330".
+ */
+function makeDecimalReadout(latitudeDegrees, longitudeDegrees) {
+  if (Number.isFinite(latitudeDegrees) === false ||
+      Number.isFinite(longitudeDegrees) === false) {
+    throw new Error("makeDecimalReadout needs two numbers.");
+  }
+  return latitudeDegrees.toFixed(6) + ", " + longitudeDegrees.toFixed(6);
+}
+
+/* ==========================================================================
+   SECTION 4 OF 8 - CSV FILE
+
+   WHAT THIS SECTION DOES
+     Writes the climbing log as a CSV file, and reads a CSV file back. The CSV
+     file is the backup and the way to move the log to a computer. It opens in
+     Excel and in Numbers.
+
+   INPUTS
+     For the export: validated climb records.
+     For the import: the text of a CSV file that a person selected.
+
+   OUTPUTS
+     For the export: CSV text with a header row.
+     For the import: the records that passed, and the rows that failed with a
+     reason for each one.
+
+   SIDE EFFECTS
+     None.
+
+   FAILURE MODES
+     A file with a wrong header row is rejected in full. A row with a bad
+     grade, a bad date, or an empty name is rejected on its own.
+
+   ASSUMPTIONS
+     The file uses a comma as the separator and a double quote as the text
+     mark. The export writes that format.
+   ========================================================================== */
+
+/* The column order of the CSV file. A change here breaks every file that the
+   app wrote before the change. The last four columns let a computer merge two
+   copies of the log: the identifier says which climb it is, the modified time
+   says which copy is newer, and the removed mark carries a deletion. */
+var CSV_COLUMN_NAMES = [
+  "climbed_at_iso",
+  "area_name",
+  "boulder_name",
+  "climb_name",
+  "grade_v_scale",
+  "is_send",
+  "is_indoor",
+  "notes",
+  "latitude_degrees",
+  "longitude_degrees",
+  "accuracy_meters",
+  "identifier",
+  "modified_at_iso",
+  "is_deleted"
+];
+
+/* A file with more rows than this is not a climbing log. The bound stops the
+   parser from running without an end. */
+var MAXIMUM_CSV_ROW_COUNT = 20001;
+
+/**
+ * Puts one value in double quotes when it holds a character that would break
+ * the CSV format.
+ * @param {*} rawValue - Any value. A null becomes empty text.
+ * @returns {string} The value, ready for a CSV row.
+ */
+function quoteCsvValue(rawValue) {
+  if (rawValue === null || rawValue === undefined) {
+    return "";
+  }
+  var textValue = String(rawValue);
+  var needsQuotes = textValue.indexOf(",") >= 0 || textValue.indexOf("\"") >= 0 ||
+    textValue.indexOf("\n") >= 0 || textValue.indexOf("\r") >= 0;
+
+  if (needsQuotes === false) {
+    return textValue;
+  }
+  /* The CSV rule for a double quote inside a quoted value is to write it twice. */
+  return "\"" + textValue.replace(/"/g, "\"\"") + "\"";
+}
+
+/**
+ * Converts one climb record to one CSV row.
+ * @param {object} climb - A validated climb record.
+ * @returns {string} One row, with no line end.
+ */
+function makeCsvRow(climb) {
+  if (climb === null || typeof climb !== "object") {
+    throw new Error("makeCsvRow needs a climb record. Got " + typeof climb + ".");
+  }
+  var rowValues = [
+    climb.climbedAtIso,
+    climb.areaName,
+    climb.boulderName,
+    climb.climbName,
+    climb.gradeValue,
+    climb.isSend === true ? "yes" : "no",
+    climb.isIndoor === true ? "yes" : "no",
+    climb.notes,
+    climb.latitudeDegrees,
+    climb.longitudeDegrees,
+    climb.accuracyMeters,
+    climb.identifier,
+    climb.modifiedAtIso,
+    climb.isDeleted === true ? "yes" : "no"
+  ];
+
+  /* Postcondition: a row with the wrong count of values makes a file that no
+     spreadsheet can read. */
+  if (rowValues.length !== CSV_COLUMN_NAMES.length) {
+    throw new Error(
+      "makeCsvRow built " + rowValues.length + " values for " +
+      CSV_COLUMN_NAMES.length + " columns."
+    );
+  }
+  return rowValues.map(quoteCsvValue).join(",");
+}
+
+/**
+ * Converts the whole climbing log to CSV text.
+ * @param {Array} climbs - Validated climb records, removed ones included.
+ * @returns {string} CSV text with a header row and one row for each climb.
+ */
+function makeCsvText(climbs) {
+  if (Array.isArray(climbs) === false) {
+    throw new Error("makeCsvText needs an array. Got " + typeof climbs + ".");
+  }
+  var rows = [CSV_COLUMN_NAMES.join(",")];
+  for (var climbIndex = 0; climbIndex < climbs.length; climbIndex += 1) {
+    rows.push(makeCsvRow(climbs[climbIndex]));
+  }
+  return rows.join("\r\n") + "\r\n";
+}
+
+/**
+ * Splits CSV text into rows, and each row into values. This parser obeys the
+ * quote rules, so a note that holds a comma survives.
+ * @param {string} csvText - The full text of a CSV file.
+ * @returns {Array} The rows. An empty row is dropped.
+ */
+function parseCsvText(csvText) {
+  if (typeof csvText !== "string") {
+    throw new Error("parseCsvText needs text. Got " + typeof csvText + ".");
+  }
+  var rows = [];
+  var currentRow = [];
+  var currentValue = "";
+  var isInsideQuotes = false;
+  var characterCount = csvText.length;
+
+  for (var characterIndex = 0; characterIndex < characterCount; characterIndex += 1) {
+    var character = csvText.charAt(characterIndex);
+
+    if (isInsideQuotes === true) {
+      if (character === "\"" && csvText.charAt(characterIndex + 1) === "\"") {
+        currentValue += "\"";
+        characterIndex += 1;
+      } else if (character === "\"") {
+        isInsideQuotes = false;
+      } else {
+        currentValue += character;
+      }
+      continue;
+    }
+    if (character === "\"") {
+      isInsideQuotes = true;
+    } else if (character === ",") {
+      currentRow.push(currentValue);
+      currentValue = "";
+    } else if (character === "\n" || character === "\r") {
+      /* A Windows file ends a line with two characters. Skip the second one. */
+      if (character === "\r" && csvText.charAt(characterIndex + 1) === "\n") {
+        characterIndex += 1;
+      }
+      currentRow.push(currentValue);
+      rows.push(currentRow);
+      currentRow = [];
+      currentValue = "";
+    } else {
+      currentValue += character;
+    }
+  }
+  if (currentValue.length > 0 || currentRow.length > 0) {
+    currentRow.push(currentValue);
+    rows.push(currentRow);
+  }
+  return rows.filter(function hasContent(row) {
+    return row.length > 1 || (row.length === 1 && row[0].trim().length > 0);
+  });
+}
+
+/**
+ * Reads a yes or no value from a CSV file. The export writes "yes" and "no".
+ * A file that a person edited can hold "true" or "1", so those work too.
+ * @param {string} rawValue - The value from the file.
+ * @returns {boolean} True for a yes value.
+ */
+function readYesOrNo(rawValue) {
+  if (typeof rawValue !== "string") {
+    return false;
+  }
+  var cleanValue = rawValue.trim().toLowerCase();
+  return cleanValue === "yes" || cleanValue === "true" ||
+    cleanValue === "1" || cleanValue === "y";
+}
+
+/**
+ * Reads a V grade from a CSV file. Accepts "5", "V5", and "v5".
+ * @param {string} rawValue - The value from the file.
+ * @returns {number} The grade number, or -1 when it is not readable.
+ */
+function readGradeValue(rawValue) {
+  if (typeof rawValue !== "string") {
+    return -1;
+  }
+  var gradeValue = Number(rawValue.trim().toLowerCase().replace(/^v/, ""));
+  return Number.isInteger(gradeValue) === true ? gradeValue : -1;
+}
+
+/**
+ * Converts CSV text back into climb records. Every row passes through the
+ * same validation as the log form, because a file from outside is not trusted.
+ * @param {string} csvText - The full text of a CSV file.
+ * @returns {object} An object with climbs, rejectedRows, and errorMessage.
+ */
+function readCsvText(csvText) {
+  var rows = parseCsvText(csvText);
+  if (rows.length < 2) {
+    return {
+      climbs: [], rejectedRows: [],
+      errorMessage: "The file has no climb rows. It needs a header row and one climb."
+    };
+  }
+  if (rows.length > MAXIMUM_CSV_ROW_COUNT) {
+    return {
+      climbs: [], rejectedRows: [],
+      errorMessage: "The file has " + rows.length + " rows. The limit is " +
+        MAXIMUM_CSV_ROW_COUNT + "."
+    };
+  }
+
+  var columnIndexByName = {};
+  for (var headerIndex = 0; headerIndex < rows[0].length; headerIndex += 1) {
+    columnIndexByName[rows[0][headerIndex].trim().toLowerCase()] = headerIndex;
+  }
+  var missingColumnName = findMissingColumnName(columnIndexByName);
+  if (missingColumnName !== null) {
+    return {
+      climbs: [], rejectedRows: [],
+      errorMessage: "The file has no column named " + missingColumnName +
+        ". Use a CSV file that this app exported."
+    };
+  }
+  return readCsvRows(rows, columnIndexByName);
+}
+
+/**
+ * Finds the first necessary column that the header row does not have.
+ * @param {object} columnIndexByName - The header row, as a lookup.
+ * @returns {string|null} The missing name, or null when all are present.
+ */
+function findMissingColumnName(columnIndexByName) {
+  /* These four are optional. A file that a person wrote by hand does not have
+     them, and the app fills each one with a safe value. */
+  var optionalColumnNames = ["identifier", "accuracy_meters", "modified_at_iso", "is_deleted"];
+
+  for (var nameIndex = 0; nameIndex < CSV_COLUMN_NAMES.length; nameIndex += 1) {
+    var columnName = CSV_COLUMN_NAMES[nameIndex];
+    if (optionalColumnNames.indexOf(columnName) >= 0) {
+      continue;
+    }
+    if (Object.prototype.hasOwnProperty.call(columnIndexByName, columnName) === false) {
+      return columnName;
+    }
+  }
+  return null;
+}
+
+/**
+ * Converts every data row of a CSV file to a climb record.
+ * @param {Array} rows - The parsed rows. Row 0 is the header.
+ * @param {object} columnIndexByName - The header row, as a lookup.
+ * @returns {object} An object with climbs, rejectedRows, and errorMessage.
+ */
+function readCsvRows(rows, columnIndexByName) {
+  var climbs = [];
+  var rejectedRows = [];
+
+  for (var rowIndex = 1; rowIndex < rows.length; rowIndex += 1) {
+    var rawClimb = makeRawClimbFromRow(rows[rowIndex], columnIndexByName);
+    var result = validateClimb(rawClimb);
+    if (result.climb === null) {
+      rejectedRows.push({ rowNumber: rowIndex + 1, errorMessage: result.errorMessage });
+    } else {
+      climbs.push(result.climb);
+    }
+  }
+  return { climbs: climbs, rejectedRows: rejectedRows, errorMessage: null };
+}
+
+/**
+ * Pulls the values of one CSV row into a raw climb record.
+ * @param {Array} row - The values of one row.
+ * @param {object} columnIndexByName - The header row, as a lookup.
+ * @returns {object} Untrusted values, ready for validation.
+ */
+function makeRawClimbFromRow(row, columnIndexByName) {
+  var readColumn = function readColumn(columnName) {
+    var columnIndex = columnIndexByName[columnName];
+    if (columnIndex === undefined || columnIndex >= row.length) {
+      return "";
+    }
+    return row[columnIndex];
+  };
+  return {
+    identifier: readColumn("identifier"),
+    climbedAtIso: readColumn("climbed_at_iso").trim(),
+    modifiedAtIso: readColumn("modified_at_iso").trim(),
+    isDeleted: readYesOrNo(readColumn("is_deleted")),
+    areaName: readColumn("area_name"),
+    boulderName: readColumn("boulder_name"),
+    climbName: readColumn("climb_name"),
+    gradeValue: readGradeValue(readColumn("grade_v_scale")),
+    isSend: readYesOrNo(readColumn("is_send")),
+    isIndoor: readYesOrNo(readColumn("is_indoor")),
+    notes: readColumn("notes"),
+    latitudeDegrees: readColumn("latitude_degrees").trim(),
+    longitudeDegrees: readColumn("longitude_degrees").trim(),
+    accuracyMeters: readColumn("accuracy_meters").trim()
+  };
+}
+
+/**
+ * Joins two sets of climbs. When both sets hold the same climb, the copy with
+ * the newer modified time wins. This is the rule that lets a phone and a
+ * computer hold the same log without one erasing the work of the other.
+ * @param {Array} existingClimbs - The climbs already in the log.
+ * @param {Array} newClimbs - The climbs from the file.
+ * @returns {Array} The joined set, with no climb twice.
+ */
+function mergeClimbs(existingClimbs, newClimbs) {
+  if (Array.isArray(existingClimbs) === false || Array.isArray(newClimbs) === false) {
+    throw new Error("mergeClimbs needs two arrays.");
+  }
+  var climbByIdentifier = {};
+  for (var oldIndex = 0; oldIndex < existingClimbs.length; oldIndex += 1) {
+    climbByIdentifier[existingClimbs[oldIndex].identifier] = existingClimbs[oldIndex];
+  }
+
+  for (var newIndex = 0; newIndex < newClimbs.length; newIndex += 1) {
+    var newClimb = newClimbs[newIndex];
+    var oldClimb = climbByIdentifier[newClimb.identifier];
+    var isNewer = oldClimb === undefined ||
+      Date.parse(newClimb.modifiedAtIso) >= Date.parse(oldClimb.modifiedAtIso);
+    if (isNewer === true) {
+      climbByIdentifier[newClimb.identifier] = newClimb;
+    }
+  }
+
+  var mergedClimbs = Object.keys(climbByIdentifier).map(function readOne(identifier) {
+    return climbByIdentifier[identifier];
+  });
+
+  /* Postcondition: a merge never loses a climb that was already in the log. */
+  if (mergedClimbs.length < existingClimbs.length) {
+    throw new Error(
+      "mergeClimbs returned " + mergedClimbs.length + " climbs from " +
+      existingClimbs.length + " existing climbs."
+    );
+  }
+  return mergedClimbs;
+}
+
+/* ==========================================================================
+   SECTION 5 OF 8 - STATISTICS
+
+   WHAT THIS SECTION DOES
+     Counts the numbers that the Stats screen shows: the climbs, the sends,
+     the V points, the sends at each grade, the climbs at each area, and one
+     session for each day. A session is every climb with the same date. You do
+     not start or stop a session.
+
+   INPUTS
+     Validated climb records, with the removed ones already left out.
+
+   OUTPUTS
+     Plain objects of numbers. This section draws nothing.
+
+   SIDE EFFECTS
+     None.
+
+   FAILURE MODES
+     An input that is not an array raises an error.
+
+   ASSUMPTIONS
+     V points count sends only. V0 is worth 1 point, V1 is worth 2 points, and
+     so on to V17 at 18 points. A climb that you did not send is worth 0.
+   ========================================================================== */
+
+/* V0 must be worth more than zero, or a full day on V0 scores nothing. */
+var V_POINT_OFFSET = 1;
+
+/**
+ * Counts the points for one climb.
+ * @param {object} climb - A validated climb record.
+ * @returns {number} The points. A climb that is not a send is worth 0.
+ */
+function countClimbPoints(climb) {
+  if (climb === null || typeof climb !== "object") {
+    throw new Error("countClimbPoints needs a climb record. Got " + typeof climb + ".");
+  }
+  if (climb.isSend !== true) {
+    return 0;
+  }
+  var points = climb.gradeValue + V_POINT_OFFSET;
+  if (points < 1) {
+    throw new Error("countClimbPoints returned " + points + " for a send.");
+  }
+  return points;
+}
+
+/**
+ * Cuts an ISO date and time down to the date.
+ * @param {string} climbedAtIso - An ISO date and time.
+ * @returns {string} The date in the form YYYY-MM-DD.
+ */
+function readDateOnly(climbedAtIso) {
+  if (typeof climbedAtIso !== "string" || climbedAtIso.length < 10) {
+    throw new Error("readDateOnly needs an ISO date. Got " + climbedAtIso + ".");
+  }
+  return climbedAtIso.slice(0, 10);
+}
+
+/**
+ * Counts the totals for a set of climbs.
+ * @param {Array} climbs - Validated climb records.
+ * @returns {object} climbCount, sendCount, pointTotal, and hardestSendGrade.
+ *   The hardest grade is -1 when there is no send.
+ */
+function countTotals(climbs) {
+  if (Array.isArray(climbs) === false) {
+    throw new Error("countTotals needs an array. Got " + typeof climbs + ".");
+  }
+  var sendCount = 0;
+  var pointTotal = 0;
+  var hardestSendGrade = -1;
+
+  for (var climbIndex = 0; climbIndex < climbs.length; climbIndex += 1) {
+    var climb = climbs[climbIndex];
+    pointTotal += countClimbPoints(climb);
+    if (climb.isSend === true) {
+      sendCount += 1;
+      if (climb.gradeValue > hardestSendGrade) {
+        hardestSendGrade = climb.gradeValue;
+      }
+    }
+  }
+  return {
+    climbCount: climbs.length,
+    sendCount: sendCount,
+    pointTotal: pointTotal,
+    hardestSendGrade: hardestSendGrade
+  };
+}
+
+/**
+ * Counts the sends and the attempts at each V grade.
+ * @param {Array} climbs - Validated climb records.
+ * @returns {Array} One entry for each grade that has a climb, from V0 up.
+ */
+function countByGrade(climbs) {
+  if (Array.isArray(climbs) === false) {
+    throw new Error("countByGrade needs an array. Got " + typeof climbs + ".");
+  }
+  var countByGradeValue = {};
+
+  for (var climbIndex = 0; climbIndex < climbs.length; climbIndex += 1) {
+    var climb = climbs[climbIndex];
+    if (countByGradeValue[climb.gradeValue] === undefined) {
+      countByGradeValue[climb.gradeValue] =
+        { gradeValue: climb.gradeValue, sendCount: 0, climbCount: 0 };
+    }
+    countByGradeValue[climb.gradeValue].climbCount += 1;
+    if (climb.isSend === true) {
+      countByGradeValue[climb.gradeValue].sendCount += 1;
+    }
+  }
+
+  return Object.keys(countByGradeValue)
+    .map(function readOne(gradeKey) { return countByGradeValue[gradeKey]; })
+    .sort(function compareByGrade(first, second) {
+      return first.gradeValue - second.gradeValue;
+    });
+}
+
+/**
+ * Counts the climbs and the sends at each area.
+ * @param {Array} climbs - Validated climb records.
+ * @returns {Array} One entry for each area, with the busiest area first.
+ */
+function countByArea(climbs) {
+  if (Array.isArray(climbs) === false) {
+    throw new Error("countByArea needs an array. Got " + typeof climbs + ".");
+  }
+  var countByAreaName = {};
+
+  for (var climbIndex = 0; climbIndex < climbs.length; climbIndex += 1) {
+    var climb = climbs[climbIndex];
+    if (countByAreaName[climb.areaName] === undefined) {
+      countByAreaName[climb.areaName] =
+        { areaName: climb.areaName, climbCount: 0, sendCount: 0, boulderNames: {} };
+    }
+    var areaCount = countByAreaName[climb.areaName];
+    areaCount.climbCount += 1;
+    areaCount.boulderNames[climb.boulderName] = true;
+    if (climb.isSend === true) {
+      areaCount.sendCount += 1;
+    }
+  }
+
+  return Object.keys(countByAreaName)
+    .map(function finishOne(areaName) {
+      var areaCount = countByAreaName[areaName];
+      return {
+        areaName: areaCount.areaName,
+        climbCount: areaCount.climbCount,
+        sendCount: areaCount.sendCount,
+        boulderCount: Object.keys(areaCount.boulderNames).length
+      };
+    })
+    .sort(function compareByClimbCount(first, second) {
+      return second.climbCount - first.climbCount;
+    });
+}
+
+/**
+ * Groups the log into one session for each day.
+ * @param {Array} climbs - Validated climb records.
+ * @returns {Array} One entry for each day, newest day first.
+ */
+function groupIntoSessions(climbs) {
+  if (Array.isArray(climbs) === false) {
+    throw new Error("groupIntoSessions needs an array. Got " + typeof climbs + ".");
+  }
+  var sessionByDate = {};
+
+  for (var climbIndex = 0; climbIndex < climbs.length; climbIndex += 1) {
+    var climb = climbs[climbIndex];
+    var dateOnly = readDateOnly(climb.climbedAtIso);
+    if (sessionByDate[dateOnly] === undefined) {
+      sessionByDate[dateOnly] = {
+        dateOnly: dateOnly, climbCount: 0, sendCount: 0, pointTotal: 0,
+        sentGradeValues: [], areaNames: {}
+      };
+    }
+    var session = sessionByDate[dateOnly];
+    session.climbCount += 1;
+    session.pointTotal += countClimbPoints(climb);
+    session.areaNames[climb.areaName] = true;
+    if (climb.isSend === true) {
+      session.sendCount += 1;
+      session.sentGradeValues.push(climb.gradeValue);
+    }
+  }
+  return finishSessions(sessionByDate);
+}
+
+/**
+ * Sorts each session and puts the newest day first.
+ * @param {object} sessionByDate - The sessions, keyed by date.
+ * @returns {Array} The finished sessions.
+ */
+function finishSessions(sessionByDate) {
+  return Object.keys(sessionByDate)
+    .map(function finishOne(dateOnly) {
+      var session = sessionByDate[dateOnly];
+      return {
+        dateOnly: session.dateOnly,
+        climbCount: session.climbCount,
+        sendCount: session.sendCount,
+        pointTotal: session.pointTotal,
+        sentGradeValues: session.sentGradeValues.slice()
+          .sort(function compareDown(first, second) { return second - first; }),
+        areaNames: Object.keys(session.areaNames)
+      };
+    })
+    .sort(function compareByDate(first, second) {
+      return first.dateOnly < second.dateOnly ? 1 : -1;
+    });
+}
+
+/**
+ * Collects the area names that the log already has.
+ * @param {Array} climbs - Validated climb records.
+ * @returns {Array} The names in alphabetical order.
+ */
+function listAreaNames(climbs) {
+  if (Array.isArray(climbs) === false) {
+    throw new Error("listAreaNames needs an array. Got " + typeof climbs + ".");
+  }
+  var nameSet = {};
+  for (var climbIndex = 0; climbIndex < climbs.length; climbIndex += 1) {
+    nameSet[climbs[climbIndex].areaName] = true;
+  }
+  return Object.keys(nameSet).sort();
+}
+
+/**
+ * Collects the boulder names of one area.
+ * @param {Array} climbs - Validated climb records.
+ * @param {string} areaName - The area to look in.
+ * @returns {Array} The names in alphabetical order.
+ */
+function listBoulderNames(climbs, areaName) {
+  if (Array.isArray(climbs) === false) {
+    throw new Error("listBoulderNames needs an array. Got " + typeof climbs + ".");
+  }
+  var nameSet = {};
+  for (var climbIndex = 0; climbIndex < climbs.length; climbIndex += 1) {
+    if (climbs[climbIndex].areaName === areaName) {
+      nameSet[climbs[climbIndex].boulderName] = true;
+    }
+  }
+  return Object.keys(nameSet).sort();
+}
+
+/**
+ * Collects the climbs that you logged on one boulder, with the grade that you
+ * gave each one last. The Log screen shows these as buttons, so that a repeat
+ * of a climb is two taps.
+ * @param {Array} climbs - Validated climb records, newest first.
+ * @param {string} areaName - The area of the boulder.
+ * @param {string} boulderName - The boulder.
+ * @returns {Array} One entry for each climb name, in alphabetical order.
+ */
+function listKnownClimbs(climbs, areaName, boulderName) {
+  if (Array.isArray(climbs) === false) {
+    throw new Error("listKnownClimbs needs an array. Got " + typeof climbs + ".");
+  }
+  var gradeByClimbName = {};
+
+  for (var climbIndex = 0; climbIndex < climbs.length; climbIndex += 1) {
+    var climb = climbs[climbIndex];
+    var isOnThisBoulder = climb.areaName === areaName && climb.boulderName === boulderName;
+    /* The records arrive newest first, so the first grade for a name is the
+       one that the person gave most recently. Keep that one. */
+    if (isOnThisBoulder === true && gradeByClimbName[climb.climbName] === undefined) {
+      gradeByClimbName[climb.climbName] = climb.gradeValue;
+    }
+  }
+
+  return Object.keys(gradeByClimbName).sort().map(function makeEntry(climbName) {
+    return { climbName: climbName, gradeValue: gradeByClimbName[climbName] };
+  });
+}
+
+/**
+ * Finds the newest coordinates that the log has for one boulder.
+ * @param {Array} climbs - Validated climb records, newest first.
+ * @param {string} areaName - The area of the boulder.
+ * @param {string} boulderName - The boulder.
+ * @returns {object|null} The coordinates, or null when the boulder has none.
+ */
+function findBoulderCoordinates(climbs, areaName, boulderName) {
+  if (Array.isArray(climbs) === false) {
+    throw new Error("findBoulderCoordinates needs an array. Got " + typeof climbs + ".");
+  }
+  for (var climbIndex = 0; climbIndex < climbs.length; climbIndex += 1) {
+    var climb = climbs[climbIndex];
+    var isOnThisBoulder = climb.areaName === areaName && climb.boulderName === boulderName;
+    if (isOnThisBoulder === true && climb.latitudeDegrees !== null) {
+      return {
+        latitudeDegrees: climb.latitudeDegrees,
+        longitudeDegrees: climb.longitudeDegrees,
+        accuracyMeters: climb.accuracyMeters
+      };
+    }
+  }
+  return null;
+}
+
+/* ==========================================================================
+   SECTION 6 OF 8 - DRAWING THE SCREENS
+
+   WHAT THIS SECTION DOES
+     Draws the Climbs screen and the Stats screen from the climb records.
+
+   INPUTS
+     An element to draw in, and validated climb records.
+
+   OUTPUTS
+     Elements inside the given element. The old content is removed first.
+
+   SIDE EFFECTS
+     Changes the page. It touches no storage.
+
+   FAILURE MODES
+     A log with no climbs draws a short message instead of an empty screen.
+
+   ASSUMPTIONS
+     Every climb record passed validation before it gets here.
+   ========================================================================== */
+
+var MAXIMUM_BAR_PERCENT = 100;
+
+/**
+ * Finds one element by its identifier.
+ * @param {string} elementId - The identifier in the page.
+ * @returns {Element} The element.
+ * @throws {Error} When the page has no such element.
+ */
+function findElement(elementId) {
+  var element = document.getElementById(elementId);
+  if (element === null) {
+    throw new Error("The page has no element named " + elementId + ".");
+  }
+  return element;
+}
+
+/**
+ * Removes every child of an element.
+ * @param {Element} parentElement - The element to empty.
+ * @returns {void}
+ */
+function removeAllChildren(parentElement) {
+  if (parentElement === null || parentElement === undefined) {
+    throw new Error("removeAllChildren needs an element. Got nothing.");
+  }
+  while (parentElement.firstChild !== null) {
+    parentElement.removeChild(parentElement.firstChild);
+  }
+}
+
+/**
+ * Builds an element with a class and text. The text goes in with textContent
+ * and never with innerHTML, so a climb name that holds a "<" character cannot
+ * change the page.
+ * @param {string} tagName - The kind of element, such as "div".
+ * @param {string} className - The class. Empty text adds no class.
+ * @param {string} textContent - The text. Empty text adds none.
+ * @returns {Element} The new element.
+ */
+function makeElement(tagName, className, textContent) {
+  var element = document.createElement(tagName);
+  if (className.length > 0) {
+    element.className = className;
+  }
+  if (textContent.length > 0) {
+    element.textContent = textContent;
+  }
+  return element;
+}
+
+/**
+ * Writes a V grade the way a climber reads it.
+ * @param {number} gradeValue - A number from 0 to 17.
+ * @returns {string} Text such as "V5".
+ */
+function makeGradeText(gradeValue) {
+  if (Number.isInteger(gradeValue) === false) {
+    throw new Error("makeGradeText needs a whole number. Got " + gradeValue + ".");
+  }
+  return "V" + gradeValue;
+}
+
+/**
+ * Writes a date the way a person reads it.
+ * @param {string} dateOnly - A date in the form YYYY-MM-DD.
+ * @returns {string} Text such as "Wed 2 Sep 2026".
+ */
+function makeDateText(dateOnly) {
+  if (typeof dateOnly !== "string" || dateOnly.length < 10) {
+    throw new Error("makeDateText needs a date. Got " + dateOnly + ".");
+  }
+  /* The midday time stops the phone from moving the date to the day before
+     when the time zone is west of Greenwich. */
+  var dateValue = new Date(dateOnly + "T12:00:00");
+  return dateValue.toLocaleDateString(undefined, {
+    weekday: "short", day: "numeric", month: "short", year: "numeric"
+  });
+}
+
+/**
+ * Draws the Climbs screen: one heading for each day, then the climbs of that
+ * day.
+ * @param {Element} listElement - The element to draw in.
+ * @param {Array} climbs - Validated climb records, newest first.
+ * @param {Function} onRemoveClimb - Called with the identifier of a climb.
+ * @returns {void}
+ */
+function drawClimbList(listElement, climbs, onRemoveClimb) {
+  if (Array.isArray(climbs) === false) {
+    throw new Error("drawClimbList needs an array. Got " + typeof climbs + ".");
+  }
+  if (typeof onRemoveClimb !== "function") {
+    throw new Error("drawClimbList needs a remove handler.");
+  }
+  removeAllChildren(listElement);
+
+  if (climbs.length === 0) {
+    listElement.appendChild(
+      makeElement("p", "quiet-text", "No climbs yet. Log one on the Log screen.")
+    );
+    return;
+  }
+
+  var lastDateOnly = "";
+  for (var climbIndex = 0; climbIndex < climbs.length; climbIndex += 1) {
+    var climb = climbs[climbIndex];
+    var dateOnly = readDateOnly(climb.climbedAtIso);
+    if (dateOnly !== lastDateOnly) {
+      listElement.appendChild(makeDayHeading(dateOnly, climbs));
+      lastDateOnly = dateOnly;
+    }
+    listElement.appendChild(makeClimbRow(climb, onRemoveClimb));
+  }
+}
+
+/**
+ * Builds the heading for one day, with the count and the points of that day.
+ * @param {string} dateOnly - The date in the form YYYY-MM-DD.
+ * @param {Array} climbs - Every climb in the log.
+ * @returns {Element} The heading.
+ */
+function makeDayHeading(dateOnly, climbs) {
+  var dayClimbs = climbs.filter(function isOnThisDay(climb) {
+    return readDateOnly(climb.climbedAtIso) === dateOnly;
+  });
+  var dayTotals = countTotals(dayClimbs);
+  var summaryText = dayTotals.sendCount + " of " + dayTotals.climbCount + " sent, " +
+    dayTotals.pointTotal + " V points";
+
+  var heading = makeElement("div", "day-heading", "");
+  heading.appendChild(makeElement("span", "day-date", makeDateText(dateOnly)));
+  heading.appendChild(makeElement("span", "day-summary", summaryText));
+  return heading;
+}
+
+/**
+ * Builds one row of the climb list.
+ * @param {object} climb - A validated climb record.
+ * @param {Function} onRemoveClimb - Called with the identifier of the climb.
+ * @returns {Element} The row.
+ */
+function makeClimbRow(climb, onRemoveClimb) {
+  var row = makeElement("div", "climb-row", "");
+  var gradeClassName = climb.isSend === true
+    ? "climb-grade climb-grade-send"
+    : "climb-grade";
+  row.appendChild(makeElement("span", gradeClassName, makeGradeText(climb.gradeValue)));
+
+  var detail = makeElement("div", "climb-detail", "");
+  detail.appendChild(makeElement("div", "climb-name", climb.climbName));
+
+  var placeParts = [climb.areaName, climb.boulderName];
+  if (climb.isIndoor === true) {
+    placeParts.push("indoor");
+  }
+  if (climb.isSend === false) {
+    placeParts.push("no send");
+  }
+  detail.appendChild(makeElement("div", "climb-place", placeParts.join(" \u00b7 ")));
+
+  if (climb.notes.length > 0) {
+    detail.appendChild(makeElement("div", "climb-note", climb.notes));
+  }
+  row.appendChild(detail);
+
+  var removeButton = makeElement("button", "remove-button", "Remove");
+  removeButton.type = "button";
+  removeButton.addEventListener("click", function handleRemove() {
+    onRemoveClimb(climb.identifier);
+  });
+  row.appendChild(removeButton);
+  return row;
+}
+
+/**
+ * Draws the whole Stats screen.
+ * @param {Array} climbs - Validated climb records.
+ * @returns {void}
+ */
+function drawStatistics(climbs) {
+  if (Array.isArray(climbs) === false) {
+    throw new Error("drawStatistics needs an array. Got " + typeof climbs + ".");
+  }
+  drawTotals(climbs);
+  drawGradeBars(climbs);
+  drawAreaList(climbs);
+  drawSessionList(climbs);
+}
+
+/**
+ * Draws the four big numbers at the top of the Stats screen.
+ * @param {Array} climbs - Validated climb records.
+ * @returns {void}
+ */
+function drawTotals(climbs) {
+  var totalElement = findElement("total-block");
+  removeAllChildren(totalElement);
+  var totals = countTotals(climbs);
+  var hardestText = totals.hardestSendGrade < 0
+    ? "\u2014"
+    : makeGradeText(totals.hardestSendGrade);
+
+  var cells = [
+    { number: String(totals.climbCount), name: "Climbs" },
+    { number: String(totals.sendCount), name: "Sends" },
+    { number: String(totals.pointTotal), name: "V points" },
+    { number: hardestText, name: "Hardest" }
+  ];
+  for (var cellIndex = 0; cellIndex < cells.length; cellIndex += 1) {
+    var cell = makeElement("div", "total-cell", "");
+    cell.appendChild(makeElement("span", "total-number", cells[cellIndex].number));
+    cell.appendChild(makeElement("span", "total-name", cells[cellIndex].name));
+    totalElement.appendChild(cell);
+  }
+}
+
+/**
+ * Draws one bar for each grade that the log has.
+ * @param {Array} climbs - Validated climb records.
+ * @returns {void}
+ */
+function drawGradeBars(climbs) {
+  var gradeElement = findElement("grade-block");
+  removeAllChildren(gradeElement);
+  var gradeCounts = countByGrade(climbs);
+
+  if (gradeCounts.length === 0) {
+    gradeElement.appendChild(makeElement("p", "quiet-text", "No climbs yet."));
+    return;
+  }
+
+  var largestCount = 1;
+  for (var findIndex = 0; findIndex < gradeCounts.length; findIndex += 1) {
+    if (gradeCounts[findIndex].climbCount > largestCount) {
+      largestCount = gradeCounts[findIndex].climbCount;
+    }
+  }
+
+  for (var gradeIndex = 0; gradeIndex < gradeCounts.length; gradeIndex += 1) {
+    var gradeCount = gradeCounts[gradeIndex];
+    var row = makeElement("div", "bar-row", "");
+    row.appendChild(makeElement("span", "bar-name", makeGradeText(gradeCount.gradeValue)));
+
+    var track = makeElement("div", "bar-track", "");
+    var fill = makeElement("div", "bar-fill", "");
+    fill.style.width = ((gradeCount.sendCount / largestCount) * MAXIMUM_BAR_PERCENT) + "%";
+    track.appendChild(fill);
+    row.appendChild(track);
+
+    row.appendChild(makeElement("span", "bar-count",
+      gradeCount.sendCount + " / " + gradeCount.climbCount));
+    gradeElement.appendChild(row);
+  }
+}
+
+/**
+ * Draws one row for each area, with the busiest area first.
+ * @param {Array} climbs - Validated climb records.
+ * @returns {void}
+ */
+function drawAreaList(climbs) {
+  var areaElement = findElement("area-block");
+  removeAllChildren(areaElement);
+  var areaCounts = countByArea(climbs);
+
+  if (areaCounts.length === 0) {
+    areaElement.appendChild(makeElement("p", "quiet-text", "No areas yet."));
+    return;
+  }
+  for (var areaIndex = 0; areaIndex < areaCounts.length; areaIndex += 1) {
+    var areaCount = areaCounts[areaIndex];
+    var row = makeElement("div", "list-row", "");
+    row.appendChild(makeElement("span", "list-name", areaCount.areaName));
+    row.appendChild(makeElement("span", "list-detail",
+      areaCount.sendCount + " of " + areaCount.climbCount + " sent \u00b7 " +
+      areaCount.boulderCount + " boulders"));
+    areaElement.appendChild(row);
+  }
+}
+
+/**
+ * Draws one row for each day that has a climb.
+ * @param {Array} climbs - Validated climb records.
+ * @returns {void}
+ */
+function drawSessionList(climbs) {
+  var sessionElement = findElement("session-block");
+  removeAllChildren(sessionElement);
+  var sessions = groupIntoSessions(climbs);
+
+  if (sessions.length === 0) {
+    sessionElement.appendChild(makeElement("p", "quiet-text", "No sessions yet."));
+    return;
+  }
+  for (var sessionIndex = 0; sessionIndex < sessions.length; sessionIndex += 1) {
+    var session = sessions[sessionIndex];
+    var gradeText = session.sentGradeValues.length === 0
+      ? "no sends"
+      : session.sentGradeValues.map(makeGradeText).join(", ");
+
+    var row = makeElement("div", "list-row", "");
+    var nameBlock = makeElement("div", "", "");
+    nameBlock.appendChild(makeElement("div", "list-name", makeDateText(session.dateOnly)));
+    nameBlock.appendChild(makeElement("div", "list-detail", session.areaNames.join(", ")));
+    row.appendChild(nameBlock);
+    row.appendChild(makeElement("span", "list-detail",
+      gradeText + " \u00b7 " + session.pointTotal + " V points"));
+    sessionElement.appendChild(row);
+  }
+}
+
+/* ==========================================================================
+   SECTION 7 OF 8 - THE COORDINATE BOXES
+
+   WHAT THIS SECTION DOES
+     Runs the boxes where you type a position. A three-way button selects the
+     format: DD, DDM, or DMS. The count of boxes changes with the format. The
+     focus moves to the next box when a box is full, so that you type the
+     numbers from the guidebook and nothing else. Two small buttons hold the
+     hemisphere. The format and the two hemispheres stay between visits.
+
+   INPUTS
+     Digits from the person, or a decimal position from the GPS.
+
+   OUTPUTS
+     A latitude and a longitude in decimal degrees, through readCoordinates.
+     The line under the boxes always shows the decimal result, so that you can
+     compare it with the book before you save.
+
+   SIDE EFFECTS
+     Changes the page. Writes the format and the hemispheres to the settings.
+     Asks the browser for the position of the phone.
+
+   FAILURE MODES
+     A part that is out of range shows a message in the readout line, and the
+     save is refused. The GPS gives no fix: the app says so and you type the
+     position by hand.
+
+   ASSUMPTIONS
+     The person reads the position from a guidebook in one of the three
+     formats, or takes it from the GPS.
+   ========================================================================== */
+
+var LATITUDE_BOX_IDS = ["latitude-box-1", "latitude-box-2", "latitude-box-3"];
+var LONGITUDE_BOX_IDS = ["longitude-box-1", "longitude-box-2", "longitude-box-3"];
+
+/* A first GPS fix with no signal can need half a minute. A shorter limit makes
+   the app give up while the phone is still finding the satellites. */
+var GPS_TIMEOUT_MILLISECONDS = 30000;
+
+/* DEVIATION: CCW-2.3 (no mutable state at module level)
+   REASON: The accuracy of the last GPS fix has no box on the screen, but it
+     must live from the fix until the save.
+   LIMIT: One number. The position itself is held by the boxes, which are the
+     one source of truth for it.
+   APPROVED-BY: (self, personal project)    DATE: 2026-09-02 */
+var lastAccuracyMeters = null;
+
+/**
+ * Reports the coordinate format that the person selected last.
+ * @returns {string} "DD", "DDM", or "DMS".
+ */
+function readCoordinateFormat() {
+  var storedFormat = readSettings().coordinateFormat;
+  return COORDINATE_FORMATS.indexOf(storedFormat) >= 0 ? storedFormat : "DMS";
+}
+
+/**
+ * Shows the right count of boxes for a format and marks the format button.
+ * The boxes are emptied, because digits from one format mean something else
+ * in another format.
+ * @param {string} coordinateFormat - "DD", "DDM", or "DMS".
+ * @returns {void}
+ */
+function applyCoordinateFormat(coordinateFormat) {
+  if (COORDINATE_FORMATS.indexOf(coordinateFormat) < 0) {
+    throw new Error("applyCoordinateFormat got an unknown format: " + coordinateFormat + ".");
+  }
+  writeSettings({ coordinateFormat: coordinateFormat });
+
+  for (var nameIndex = 0; nameIndex < COORDINATE_FORMATS.length; nameIndex += 1) {
+    var formatName = COORDINATE_FORMATS[nameIndex];
+    var isSelected = formatName === coordinateFormat;
+    findElement("format-" + formatName.toLowerCase() + "-button")
+      .setAttribute("aria-pressed", String(isSelected));
+  }
+  applyBoxesToLine("latitude", LATITUDE_BOX_IDS, coordinateFormat);
+  applyBoxesToLine("longitude", LONGITUDE_BOX_IDS, coordinateFormat);
+  drawDecimalReadout();
+}
+
+/**
+ * Shows, sizes, and empties the boxes of one line.
+ * @param {string} lineName - "latitude" or "longitude".
+ * @param {Array} boxIds - The three box identifiers of that line.
+ * @param {string} coordinateFormat - "DD", "DDM", or "DMS".
+ * @returns {void}
+ */
+function applyBoxesToLine(lineName, boxIds, coordinateFormat) {
+  var boxWidths = BOX_WIDTHS[coordinateFormat][lineName];
+  var boxNames = BOX_NAMES[coordinateFormat][lineName];
+
+  for (var boxIndex = 0; boxIndex < boxIds.length; boxIndex += 1) {
+    var boxElement = findElement(boxIds[boxIndex]);
+    var isUsed = boxIndex < boxWidths.length;
+    boxElement.hidden = isUsed === false;
+    boxElement.value = "";
+    if (isUsed === true) {
+      boxElement.maxLength = boxWidths[boxIndex];
+      boxElement.placeholder = boxNames[boxIndex];
+    }
+  }
+}
+
+/**
+ * Collects the boxes that the current format uses, in typing order.
+ * @returns {Array} The box elements, latitude first.
+ */
+function listUsedBoxes() {
+  var allBoxIds = LATITUDE_BOX_IDS.concat(LONGITUDE_BOX_IDS);
+  var usedBoxes = [];
+  for (var boxIndex = 0; boxIndex < allBoxIds.length; boxIndex += 1) {
+    var boxElement = findElement(allBoxIds[boxIndex]);
+    if (boxElement.hidden === false) {
+      usedBoxes.push(boxElement);
+    }
+  }
+  return usedBoxes;
+}
+
+/**
+ * Reads the position from the boxes.
+ * @returns {object} isEmpty, latitudeDegrees, longitudeDegrees, errorMessage.
+ */
+function readCoordinates() {
+  var coordinateFormat = readCoordinateFormat();
+  var latitudeTexts = readLineTexts(LATITUDE_BOX_IDS, coordinateFormat, "latitude");
+  var longitudeTexts = readLineTexts(LONGITUDE_BOX_IDS, coordinateFormat, "longitude");
+  var emptyResult = {
+    isEmpty: true, latitudeDegrees: null, longitudeDegrees: null, errorMessage: null
+  };
+
+  var hasLatitude = latitudeTexts.join("").trim().length > 0;
+  var hasLongitude = longitudeTexts.join("").trim().length > 0;
+  if (hasLatitude === false && hasLongitude === false) {
+    return emptyResult;
+  }
+  if (hasLatitude === false || hasLongitude === false) {
+    return Object.assign({}, emptyResult, {
+      errorMessage: "Fill both the latitude and the longitude, or clear both."
+    });
+  }
+
+  var northOrSouth = findElement("north-south-button").textContent;
+  var eastOrWest = findElement("east-west-button").textContent;
+  var latitudeResult =
+    makeDecimalDegrees(latitudeTexts, coordinateFormat, northOrSouth === "N" ? 1 : -1);
+  var longitudeResult =
+    makeDecimalDegrees(longitudeTexts, coordinateFormat, eastOrWest === "E" ? 1 : -1);
+
+  if (latitudeResult.errorMessage !== null) {
+    return Object.assign({}, emptyResult, { errorMessage: "Latitude: " + latitudeResult.errorMessage });
+  }
+  if (longitudeResult.errorMessage !== null) {
+    return Object.assign({}, emptyResult, { errorMessage: "Longitude: " + longitudeResult.errorMessage });
+  }
+  return checkCoordinateRange(latitudeResult.degreeValue, longitudeResult.degreeValue);
+}
+
+/**
+ * Makes sure that a position is on the Earth.
+ * @param {number} latitudeDegrees - The latitude in decimal degrees.
+ * @param {number} longitudeDegrees - The longitude in decimal degrees.
+ * @returns {object} The same result shape that readCoordinates returns.
+ */
+function checkCoordinateRange(latitudeDegrees, longitudeDegrees) {
+  if (Math.abs(latitudeDegrees) > 90) {
+    return {
+      isEmpty: false, latitudeDegrees: null, longitudeDegrees: null,
+      errorMessage: "The latitude is " + latitudeDegrees.toFixed(4) + ". It must be -90 to 90."
+    };
+  }
+  if (Math.abs(longitudeDegrees) > 180) {
+    return {
+      isEmpty: false, latitudeDegrees: null, longitudeDegrees: null,
+      errorMessage: "The longitude is " + longitudeDegrees.toFixed(4) + ". It must be -180 to 180."
+    };
+  }
+  return {
+    isEmpty: false, latitudeDegrees: latitudeDegrees,
+    longitudeDegrees: longitudeDegrees, errorMessage: null
+  };
+}
+
+/**
+ * Reads the text of the boxes that one line uses.
+ * @param {Array} boxIds - The three box identifiers of that line.
+ * @param {string} coordinateFormat - "DD", "DDM", or "DMS".
+ * @param {string} lineName - "latitude" or "longitude".
+ * @returns {Array} The text of each used box.
+ */
+function readLineTexts(boxIds, coordinateFormat, lineName) {
+  var usedCount = countBoxes(coordinateFormat, lineName);
+  var partTexts = [];
+  for (var boxIndex = 0; boxIndex < usedCount; boxIndex += 1) {
+    partTexts.push(findElement(boxIds[boxIndex]).value);
+  }
+  return partTexts;
+}
+
+/**
+ * Puts a decimal position into the boxes, in the current format.
+ * @param {number|null} latitudeDegrees - The latitude, or null to empty them.
+ * @param {number|null} longitudeDegrees - The longitude.
+ * @returns {void}
+ */
+function writeCoordinates(latitudeDegrees, longitudeDegrees) {
+  var coordinateFormat = readCoordinateFormat();
+
+  if (latitudeDegrees === null || longitudeDegrees === null) {
+    applyBoxesToLine("latitude", LATITUDE_BOX_IDS, coordinateFormat);
+    applyBoxesToLine("longitude", LONGITUDE_BOX_IDS, coordinateFormat);
+    lastAccuracyMeters = null;
+    drawDecimalReadout();
+    return;
+  }
+
+  writeLineTexts(LATITUDE_BOX_IDS, makeCoordinateParts(latitudeDegrees, coordinateFormat));
+  writeLineTexts(LONGITUDE_BOX_IDS, makeCoordinateParts(longitudeDegrees, coordinateFormat));
+  findElement("north-south-button").textContent = latitudeDegrees < 0 ? "S" : "N";
+  findElement("east-west-button").textContent = longitudeDegrees < 0 ? "W" : "E";
+  writeSettings({
+    northOrSouth: latitudeDegrees < 0 ? "S" : "N",
+    eastOrWest: longitudeDegrees < 0 ? "W" : "E"
+  });
+  drawDecimalReadout();
+}
+
+/**
+ * Puts the parts of one line into its boxes.
+ * @param {Array} boxIds - The three box identifiers of that line.
+ * @param {Array} partTexts - The text for each used box.
+ * @returns {void}
+ */
+function writeLineTexts(boxIds, partTexts) {
+  for (var boxIndex = 0; boxIndex < partTexts.length; boxIndex += 1) {
+    findElement(boxIds[boxIndex]).value = partTexts[boxIndex];
+  }
+}
+
+/**
+ * Shows the decimal result, or the reason that the boxes are not readable.
+ * @returns {void}
+ */
+function drawDecimalReadout() {
+  var readoutElement = findElement("decimal-readout");
+  var result = readCoordinates();
+
+  if (result.errorMessage !== null) {
+    readoutElement.textContent = result.errorMessage;
+    readoutElement.className = "decimal-readout is-error";
+  } else if (result.isEmpty === true) {
+    readoutElement.textContent = "No location set.";
+    readoutElement.className = "decimal-readout";
+  } else {
+    var accuracyText = lastAccuracyMeters === null
+      ? ""
+      : "   \u00b1" + Math.round(lastAccuracyMeters) + " m";
+    readoutElement.textContent =
+      makeDecimalReadout(result.latitudeDegrees, result.longitudeDegrees) + accuracyText;
+    readoutElement.className = "decimal-readout";
+  }
+  findElement("open-map-button").hidden = result.latitudeDegrees === null;
+}
+
+/**
+ * Removes every character that is not a digit or a decimal point, and keeps
+ * one decimal point only. A minus sign flips the hemisphere instead, because
+ * a guidebook that writes -118 means west.
+ * @param {Element} boxElement - The box that the person typed in.
+ * @returns {void}
+ */
+function cleanBoxValue(boxElement) {
+  var rawValue = boxElement.value;
+  var isNegative = rawValue.indexOf("-") >= 0;
+  var cleanValue = rawValue.replace(/[^0-9.]/g, "");
+  var firstPointIndex = cleanValue.indexOf(".");
+
+  if (firstPointIndex >= 0) {
+    cleanValue = cleanValue.slice(0, firstPointIndex + 1) +
+      cleanValue.slice(firstPointIndex + 1).replace(/\./g, "");
+  }
+  boxElement.value = cleanValue;
+
+  if (isNegative === true) {
+    var isLatitude = LATITUDE_BOX_IDS.indexOf(boxElement.id) >= 0;
+    setHemisphere(isLatitude === true ? "north-south-button" : "east-west-button",
+      isLatitude === true ? "S" : "W");
+  }
+}
+
+/**
+ * Sets one hemisphere button and remembers the choice.
+ * @param {string} buttonId - "north-south-button" or "east-west-button".
+ * @param {string} letterValue - "N", "S", "E", or "W".
+ * @returns {void}
+ */
+function setHemisphere(buttonId, letterValue) {
+  findElement(buttonId).textContent = letterValue;
+  if (buttonId === "north-south-button") {
+    writeSettings({ northOrSouth: letterValue });
+  } else {
+    writeSettings({ eastOrWest: letterValue });
+  }
+  drawDecimalReadout();
+}
+
+/**
+ * Moves the focus to the box after the one that is full.
+ * @param {Element} boxElement - The box that the person typed in.
+ * @returns {void}
+ */
+function advanceFocus(boxElement) {
+  if (boxElement.value.length < boxElement.maxLength) {
+    return;
+  }
+  var usedBoxes = listUsedBoxes();
+  var thisIndex = usedBoxes.indexOf(boxElement);
+  if (thisIndex >= 0 && thisIndex + 1 < usedBoxes.length) {
+    usedBoxes[thisIndex + 1].focus();
+  }
+}
+
+/**
+ * Asks the browser for the position of the phone and puts it in the boxes.
+ * @param {Function} onMessage - Called with the message text and an error flag.
+ * @returns {void}
+ */
+function pinLocationFromGps(onMessage) {
+  if ("geolocation" in navigator === false) {
+    onMessage("This browser gives no GPS position. Type the location by hand.", true);
+    return;
+  }
+  var pinButton = findElement("pin-location-button");
+  pinButton.disabled = true;
+  pinButton.textContent = "Finding\u2026";
+
+  navigator.geolocation.getCurrentPosition(
+    function acceptPosition(position) {
+      lastAccuracyMeters = position.coords.accuracy;
+      writeCoordinates(position.coords.latitude, position.coords.longitude);
+      resetPinButton();
+      onMessage("Location pinned.", false);
+    },
+    function reportPositionError(positionError) {
+      resetPinButton();
+      onMessage("No GPS fix: " + positionError.message + " Type the location by hand.", true);
+    },
+    { enableHighAccuracy: true, timeout: GPS_TIMEOUT_MILLISECONDS, maximumAge: 0 }
+  );
+}
+
+/**
+ * Puts the GPS button back to its normal state.
+ * @returns {void}
+ */
+function resetPinButton() {
+  var pinButton = findElement("pin-location-button");
+  pinButton.disabled = false;
+  pinButton.textContent = "Use GPS";
+}
+
+/**
+ * Connects the format buttons, the hemisphere buttons, and the boxes.
+ * @param {Function} onMessage - Called with the message text and an error flag.
+ * @returns {void}
+ */
+function connectCoordinateControls(onMessage) {
+  if (typeof onMessage !== "function") {
+    throw new Error("connectCoordinateControls needs a message handler.");
+  }
+  for (var nameIndex = 0; nameIndex < COORDINATE_FORMATS.length; nameIndex += 1) {
+    connectFormatButton(COORDINATE_FORMATS[nameIndex]);
+  }
+  connectHemisphereButton("north-south-button", "N", "S");
+  connectHemisphereButton("east-west-button", "E", "W");
+
+  var allBoxIds = LATITUDE_BOX_IDS.concat(LONGITUDE_BOX_IDS);
+  for (var boxIndex = 0; boxIndex < allBoxIds.length; boxIndex += 1) {
+    connectCoordinateBox(findElement(allBoxIds[boxIndex]));
+  }
+  findElement("pin-location-button").addEventListener("click", function startPin() {
+    pinLocationFromGps(onMessage);
+  });
+  findElement("clear-location-button").addEventListener("click", function clearPin() {
+    writeCoordinates(null, null);
+  });
+  findElement("open-map-button").addEventListener("click", function startMap() {
+    openMapForCoordinates(onMessage);
+  });
+
+  var settings = readSettings();
+  findElement("north-south-button").textContent = settings.northOrSouth;
+  findElement("east-west-button").textContent = settings.eastOrWest;
+  applyCoordinateFormat(readCoordinateFormat());
+}
+
+/**
+ * Connects one of the three format buttons.
+ * @param {string} formatName - "DD", "DDM", or "DMS".
+ * @returns {void}
+ */
+function connectFormatButton(formatName) {
+  var buttonId = "format-" + formatName.toLowerCase() + "-button";
+  findElement(buttonId).addEventListener("click", function selectThisFormat() {
+    applyCoordinateFormat(formatName);
+  });
+}
+
+/**
+ * Connects one hemisphere button so that a tap changes it to the other letter.
+ * @param {string} buttonId - The identifier of the button.
+ * @param {string} firstLetter - One of the two letters.
+ * @param {string} secondLetter - The other letter.
+ * @returns {void}
+ */
+function connectHemisphereButton(buttonId, firstLetter, secondLetter) {
+  findElement(buttonId).addEventListener("click", function changeHemisphere() {
+    var currentLetter = findElement(buttonId).textContent;
+    setHemisphere(buttonId, currentLetter === firstLetter ? secondLetter : firstLetter);
+  });
+}
+
+/**
+ * Connects one coordinate box: it cleans what you type, it moves the focus
+ * when the box is full, and it keeps the decimal readout correct.
+ * @param {Element} boxElement - The box.
+ * @returns {void}
+ */
+function connectCoordinateBox(boxElement) {
+  boxElement.addEventListener("input", function handleTyping() {
+    cleanBoxValue(boxElement);
+    advanceFocus(boxElement);
+    drawDecimalReadout();
+  });
+}
+
+/**
+ * Opens the position in the map app of the phone.
+ * @param {Function} onMessage - Called with the message text and an error flag.
+ * @returns {void}
+ */
+function openMapForCoordinates(onMessage) {
+  var result = readCoordinates();
+  if (result.latitudeDegrees === null) {
+    onMessage("There is no location to show.", true);
+    return;
+  }
+  window.open("https://maps.apple.com/?q=" +
+    result.latitudeDegrees + "," + result.longitudeDegrees, "_blank");
+}
+
+/* ==========================================================================
+   SECTION 8 OF 8 - THE APP
+
+   WHAT THIS SECTION DOES
+     Joins the other sections together. It answers every tap, it keeps the
+     area and the boulder between climbs, it gets one GPS fix for each new
+     boulder, and it saves each climb the moment you tap Save.
+
+   INPUTS
+     Taps and text from the person.
+
+   OUTPUTS
+     The four screens.
+
+   SIDE EFFECTS
+     Writes the climb records and the settings to the storage of the browser.
+     Makes a CSV file for download.
+
+   FAILURE MODES
+     A climb with no name or a bad position shows the reason and saves
+     nothing. A full storage area shows a message that tells you to export.
+
+   ASSUMPTIONS
+     One person, one phone. A computer merges the CSV files later.
+   ========================================================================== */
+
+var LOWEST_GRADE_VALUE = 0;
+var HIGHEST_GRADE_VALUE = 17;
+var MESSAGE_TIMEOUT_MILLISECONDS = 5000;
+var FILE_ADDRESS_RELEASE_MILLISECONDS = 1000;
+var SCREEN_NAMES = ["log", "climbs", "stats", "data"];
+
+/* DEVIATION: CCW-2.3 (no mutable state at module level)
+   REASON: The grade, the result, and the place must live from one tap to the
+     next, and the browser gives no other place to keep them.
+   LIMIT: One object. Every climb still passes validation before it is saved.
+   APPROVED-BY: (self, personal project)    DATE: 2026-09-02 */
+var formState = { gradeValue: 0, isSend: true, isIndoor: false };
+
+/**
+ * Shows a short message at the top of the page.
+ * @param {string} messageText - The message.
+ * @param {boolean} isError - True to show it in the error color.
+ * @returns {void}
+ */
+function showMessage(messageText, isError) {
+  var messageBar = findElement("message-bar");
+  messageBar.textContent = messageText;
+  messageBar.className = isError === true ? "notice notice-error" : "notice";
+  messageBar.hidden = false;
+  window.setTimeout(function hideMessage() {
+    messageBar.hidden = true;
+  }, MESSAGE_TIMEOUT_MILLISECONDS);
+}
+
+/**
+ * Shows one screen and hides the other three.
+ * @param {string} screenName - One of the names in SCREEN_NAMES.
+ * @returns {void}
+ */
+function showScreen(screenName) {
+  if (SCREEN_NAMES.indexOf(screenName) < 0) {
+    throw new Error("showScreen got an unknown screen: " + screenName + ".");
+  }
+  for (var nameIndex = 0; nameIndex < SCREEN_NAMES.length; nameIndex += 1) {
+    findElement(SCREEN_NAMES[nameIndex] + "-screen").hidden =
+      SCREEN_NAMES[nameIndex] !== screenName;
+  }
+  var tabButtons = document.querySelectorAll(".tab");
+  for (var tabIndex = 0; tabIndex < tabButtons.length; tabIndex += 1) {
+    tabButtons[tabIndex].setAttribute("aria-selected",
+      String(tabButtons[tabIndex].dataset.screenName === screenName));
+  }
+  refreshScreens();
+}
+
+/**
+ * Builds the eighteen grade buttons, from V0 to V17.
+ * @returns {void}
+ */
+function buildGradeButtons() {
+  var gradeRow = findElement("grade-buttons");
+  removeAllChildren(gradeRow);
+  for (var gradeValue = LOWEST_GRADE_VALUE; gradeValue <= HIGHEST_GRADE_VALUE; gradeValue += 1) {
+    var gradeButton = document.createElement("button");
+    gradeButton.type = "button";
+    gradeButton.className = "chip";
+    gradeButton.textContent = "V" + gradeValue;
+    gradeButton.dataset.gradeValue = String(gradeValue);
+    gradeButton.setAttribute("aria-pressed", "false");
+    gradeButton.addEventListener("click", makeGradeHandler(gradeValue));
+    gradeRow.appendChild(gradeButton);
+  }
+}
+
+/**
+ * Builds the handler for one grade button. A named builder keeps the grade of
+ * each button separate from the loop counter.
+ * @param {number} gradeValue - The grade of that button.
+ * @returns {Function} The handler.
+ */
+function makeGradeHandler(gradeValue) {
+  return function selectThisGrade() {
+    setGradeValue(gradeValue);
+  };
+}
+
+/**
+ * Marks one grade button as selected.
+ * @param {number} gradeValue - A number from 0 to 17.
+ * @returns {void}
+ */
+function setGradeValue(gradeValue) {
+  if (gradeValue < LOWEST_GRADE_VALUE || gradeValue > HIGHEST_GRADE_VALUE) {
+    throw new Error("setGradeValue got " + gradeValue + ". The range is 0 to 17.");
+  }
+  formState.gradeValue = gradeValue;
+  var gradeButtons = document.querySelectorAll("#grade-buttons .chip");
+  for (var buttonIndex = 0; buttonIndex < gradeButtons.length; buttonIndex += 1) {
+    gradeButtons[buttonIndex].setAttribute("aria-pressed",
+      String(Number(gradeButtons[buttonIndex].dataset.gradeValue) === gradeValue));
+  }
+}
+
+/**
+ * Marks the Sent choice or the Did-not-send choice.
+ * @param {boolean} isSend - True when the climb was sent.
+ * @returns {void}
+ */
+function setSendChoice(isSend) {
+  formState.isSend = isSend === true;
+  findElement("send-yes-button").setAttribute("aria-pressed", String(formState.isSend));
+  findElement("send-no-button").setAttribute("aria-pressed", String(formState.isSend === false));
+}
+
+/**
+ * Marks the Outdoor choice or the Indoor choice. An indoor gym problem has no
+ * position, so the app hides the coordinate boxes for it.
+ * @param {boolean} isIndoor - True for an indoor gym.
+ * @returns {void}
+ */
+function setPlaceChoice(isIndoor) {
+  formState.isIndoor = isIndoor === true;
+  findElement("indoor-button").setAttribute("aria-pressed", String(formState.isIndoor));
+  findElement("outdoor-button").setAttribute("aria-pressed", String(formState.isIndoor === false));
+  findElement("coordinate-block").hidden = formState.isIndoor;
+}
+
+/**
+ * Puts a set of names into one datalist element.
+ * @param {string} listElementId - The identifier of the datalist.
+ * @param {Array} names - The names to offer.
+ * @returns {void}
+ */
+function fillNameList(listElementId, names) {
+  var listElement = findElement(listElementId);
+  removeAllChildren(listElement);
+  for (var nameIndex = 0; nameIndex < names.length; nameIndex += 1) {
+    var optionElement = document.createElement("option");
+    optionElement.value = names[nameIndex];
+    listElement.appendChild(optionElement);
+  }
+}
+
+/**
+ * Draws the buttons for the climbs that you already logged on this boulder.
+ * A tap fills the name and the grade, so that a repeat is two taps.
+ * @param {Array} climbs - Validated climb records.
+ * @returns {void}
+ */
+function drawKnownClimbs(climbs) {
+  var knownClimbs = listKnownClimbs(climbs,
+    findElement("area-input").value.trim(), findElement("boulder-input").value.trim());
+  var buttonRow = findElement("known-climb-buttons");
+  removeAllChildren(buttonRow);
+  findElement("known-climb-block").hidden = knownClimbs.length === 0;
+
+  for (var climbIndex = 0; climbIndex < knownClimbs.length; climbIndex += 1) {
+    buttonRow.appendChild(makeKnownClimbButton(knownClimbs[climbIndex]));
+  }
+}
+
+/**
+ * Builds one button for a climb that you logged on this boulder before.
+ * @param {object} knownClimb - The climb name and its last grade.
+ * @returns {Element} The button.
+ */
+function makeKnownClimbButton(knownClimb) {
+  var climbButton = makeElement("button", "chip chip-climb", knownClimb.climbName);
+  climbButton.type = "button";
+  climbButton.appendChild(
+    makeElement("span", "chip-grade", makeGradeText(knownClimb.gradeValue)));
+  climbButton.addEventListener("click", function fillThisClimb() {
+    findElement("climb-name-input").value = knownClimb.climbName;
+    setGradeValue(knownClimb.gradeValue);
+  });
+  return climbButton;
+}
+
+/**
+ * Reports whether the log survives a restart, and how many climbs it holds.
+ * @param {number} climbCount - The count of climbs in the log.
+ * @returns {void}
+ */
+function drawStorageStatus(climbCount) {
+  var isPersistent = getStorageIsPersistent();
+  findElement("storage-status").textContent = isPersistent === true
+    ? climbCount + " climbs are on this phone. Export a CSV file after each trip."
+    : climbCount + " climbs are in memory only. They go away when you close the app.";
+  findElement("storage-warning").hidden = isPersistent;
+}
+
+/**
+ * Draws every screen again from the records on the phone.
+ * @returns {void}
+ */
+function refreshScreens() {
+  var climbs = readAllClimbs();
+  fillNameList("area-name-list", listAreaNames(climbs));
+  fillNameList("boulder-name-list",
+    listBoulderNames(climbs, findElement("area-input").value.trim()));
+  drawKnownClimbs(climbs);
+  drawClimbList(findElement("climb-list"), climbs, handleRemoveClimb);
+  drawStatistics(climbs);
+  drawStorageStatus(climbs.length);
+}
+
+/**
+ * Answers a change of the area or the boulder. It remembers the two names, it
+ * fills the position of a boulder that you pinned before, and it asks for one
+ * GPS fix when the boulder is new.
+ * @returns {void}
+ */
+function handleLocationChange() {
+  var areaName = findElement("area-input").value.trim();
+  var boulderName = findElement("boulder-input").value.trim();
+  var lastSettings = readSettings();
+  var isSameBoulder = lastSettings.areaName === areaName &&
+    lastSettings.boulderName === boulderName;
+  writeSettings({ areaName: areaName, boulderName: boulderName });
+  refreshScreens();
+
+  if (isSameBoulder === true) {
+    return;
+  }
+  /* A different rock has a different position. The old one must go, or the
+     new boulder gets saved with the coordinates of the last one. */
+  writeCoordinates(null, null);
+  if (areaName.length === 0 || boulderName.length === 0 || formState.isIndoor === true) {
+    return;
+  }
+  var knownCoordinates = findBoulderCoordinates(readAllClimbs(), areaName, boulderName);
+  if (knownCoordinates !== null) {
+    lastAccuracyMeters = knownCoordinates.accuracyMeters;
+    writeCoordinates(knownCoordinates.latitudeDegrees, knownCoordinates.longitudeDegrees);
+    return;
+  }
+  /* One fix for each new boulder. Every climb on that rock uses it, so the
+     app never asks the GPS again until you move to another boulder. */
+  pinLocationFromGps(showMessage);
+}
+
+/**
+ * Fills the position of the boulder that was open when the app closed. The
+ * app does not ask the GPS on start, so that an open of the app in the car
+ * does not pin the car park to a boulder.
+ * @returns {void}
+ */
+function restoreBoulderCoordinates() {
+  var settings = readSettings();
+  if (settings.areaName.length === 0 || settings.boulderName.length === 0) {
+    return;
+  }
+  var knownCoordinates =
+    findBoulderCoordinates(readAllClimbs(), settings.areaName, settings.boulderName);
+  if (knownCoordinates !== null) {
+    lastAccuracyMeters = knownCoordinates.accuracyMeters;
+    writeCoordinates(knownCoordinates.latitudeDegrees, knownCoordinates.longitudeDegrees);
+  }
+}
+
+/**
+ * Saves the climb that the form holds.
+ * @returns {void}
+ */
+function handleSaveClimb() {
+  var coordinateResult = readCoordinates();
+  if (coordinateResult.errorMessage !== null) {
+    showMessage(coordinateResult.errorMessage, true);
+    return;
+  }
+  var isOutdoor = formState.isIndoor === false;
+  var nowIso = new Date().toISOString();
+  var rawClimb = {
+    identifier: makeClimbIdentifier(nowIso, Math.random()),
+    climbedAtIso: nowIso,
+    modifiedAtIso: nowIso,
+    isDeleted: false,
+    areaName: findElement("area-input").value,
+    boulderName: findElement("boulder-input").value,
+    climbName: findElement("climb-name-input").value,
+    gradeValue: formState.gradeValue,
+    isSend: formState.isSend,
+    isIndoor: formState.isIndoor,
+    notes: findElement("notes-input").value,
+    latitudeDegrees: isOutdoor === true ? coordinateResult.latitudeDegrees : null,
+    longitudeDegrees: isOutdoor === true ? coordinateResult.longitudeDegrees : null,
+    accuracyMeters: isOutdoor === true ? lastAccuracyMeters : null
+  };
+
+  try {
+    var result = addClimb(rawClimb);
+    if (result.climb === null) {
+      showMessage(result.errorMessage, true);
+      return;
+    }
+    clearAfterSave();
+    refreshScreens();
+    showMessage("Saved " + makeGradeText(result.climb.gradeValue) + " " +
+      result.climb.climbName + ".", false);
+  } catch (saveError) {
+    showMessage(saveError.message, true);
+  }
+}
+
+/**
+ * Empties the climb name and the notes. The area, the boulder, the grade, and
+ * the position stay, because the next climb is usually on the same rock.
+ * @returns {void}
+ */
+function clearAfterSave() {
+  findElement("climb-name-input").value = "";
+  findElement("notes-input").value = "";
+  setSendChoice(true);
+}
+
+/**
+ * Marks one climb as removed, after the person agrees.
+ * @param {string} identifier - The identifier of the climb.
+ * @returns {void}
+ */
+function handleRemoveClimb(identifier) {
+  if (window.confirm("Remove this climb? You cannot undo this.") === false) {
+    return;
+  }
+  try {
+    if (removeClimb(identifier, new Date().toISOString()) === false) {
+      showMessage("That climb is not in the log.", true);
+      return;
+    }
+    refreshScreens();
+    showMessage("Climb removed.", false);
+  } catch (removeError) {
+    showMessage(removeError.message, true);
+  }
+}
+
+/**
+ * Writes the whole log to a CSV file and starts the download. The removed
+ * climbs go into the file too, so that a computer learns about them.
+ * @returns {void}
+ */
+function handleExport() {
+  var climbs = readAllClimbsWithRemoved();
+  if (climbs.length === 0) {
+    showMessage("The log is empty. There is nothing to export.", true);
+    return;
+  }
+  try {
+    var fileName = "climb-log-" + new Date().toISOString().slice(0, 10) + ".csv";
+    var fileBlob = new Blob([makeCsvText(climbs)], { type: "text/csv;charset=utf-8" });
+    var fileAddress = URL.createObjectURL(fileBlob);
+    var downloadLink = document.createElement("a");
+
+    downloadLink.href = fileAddress;
+    downloadLink.download = fileName;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+
+    window.setTimeout(function releaseFileAddress() {
+      URL.revokeObjectURL(fileAddress);
+    }, FILE_ADDRESS_RELEASE_MILLISECONDS);
+    showMessage("Exported " + climbs.length + " rows to " + fileName + ".", false);
+  } catch (exportError) {
+    showMessage("The export failed: " + exportError.message, true);
+  }
+}
+
+/**
+ * Reads the selected CSV file and joins it with the log.
+ * @returns {void}
+ */
+function handleImportMerge() {
+  readImportFile(false);
+}
+
+/**
+ * Reads the selected CSV file and replaces the whole log with it.
+ * @returns {void}
+ */
+function handleImportReplace() {
+  if (window.confirm("Replace every climb in the log with the file? You cannot undo this.")
+      === false) {
+    return;
+  }
+  readImportFile(true);
+}
+
+/**
+ * Reads the CSV file that the person selected, then puts it into the log.
+ * @param {boolean} isReplace - True to replace the log, false to join it.
+ * @returns {void}
+ */
+function readImportFile(isReplace) {
+  var fileInput = findElement("import-file-input");
+  if (fileInput.files.length === 0) {
+    showMessage("Select a CSV file first.", true);
+    return;
+  }
+  var fileReader = new FileReader();
+  fileReader.onerror = function reportReadError() {
+    showMessage("The phone could not read that file. Try another copy.", true);
+  };
+  fileReader.onload = function acceptFileText() {
+    applyImportedText(String(fileReader.result), isReplace);
+  };
+  fileReader.readAsText(fileInput.files[0]);
+}
+
+/**
+ * Puts the text of a CSV file into the log and reports the result.
+ * @param {string} csvText - The text of the file.
+ * @param {boolean} isReplace - True to replace the log, false to join it.
+ * @returns {void}
+ */
+function applyImportedText(csvText, isReplace) {
+  try {
+    var importResult = readCsvText(csvText);
+    if (importResult.errorMessage !== null) {
+      showMessage(importResult.errorMessage, true);
+      return;
+    }
+    var climbsToKeep = isReplace === true ? [] : readAllClimbsWithRemoved();
+    var mergedClimbs = mergeClimbs(climbsToKeep, importResult.climbs);
+    replaceAllClimbs(mergedClimbs);
+    refreshScreens();
+
+    var messageText = makeImportMessage(importResult, readAllClimbs().length);
+    findElement("import-result").textContent = messageText;
+    showMessage(messageText, false);
+  } catch (importError) {
+    showMessage("The import failed: " + importError.message, true);
+  }
+}
+
+/**
+ * Writes the message that reports the result of an import.
+ * @param {object} importResult - The result from readCsvText.
+ * @param {number} logSize - The count of climbs that the log now shows.
+ * @returns {string} The message.
+ */
+function makeImportMessage(importResult, logSize) {
+  var baseText = "Read " + importResult.climbs.length + " rows. The log now holds " +
+    logSize + " climbs.";
+  if (importResult.rejectedRows.length === 0) {
+    return baseText;
+  }
+  return baseText + " " + importResult.rejectedRows.length + " rows failed. Row " +
+    importResult.rejectedRows[0].rowNumber + ": " +
+    importResult.rejectedRows[0].errorMessage;
+}
+
+/**
+ * Connects every button and box, then draws the first screen.
+ * @returns {void}
+ */
+function start() {
+  storageIsPersistent = testStorageIsPersistent();
+  buildGradeButtons();
+  setGradeValue(LOWEST_GRADE_VALUE);
+  setSendChoice(true);
+  setPlaceChoice(false);
+  connectCoordinateControls(showMessage);
+
+  var settings = readSettings();
+  findElement("area-input").value = settings.areaName;
+  findElement("boulder-input").value = settings.boulderName;
+  restoreBoulderCoordinates();
+
+  findElement("send-yes-button").addEventListener("click", function chooseSend() {
+    setSendChoice(true);
+  });
+  findElement("send-no-button").addEventListener("click", function chooseNoSend() {
+    setSendChoice(false);
+  });
+  findElement("outdoor-button").addEventListener("click", function chooseOutdoor() {
+    setPlaceChoice(false);
+  });
+  findElement("indoor-button").addEventListener("click", function chooseIndoor() {
+    setPlaceChoice(true);
+  });
+  findElement("area-input").addEventListener("change", handleLocationChange);
+  findElement("boulder-input").addEventListener("change", handleLocationChange);
+  findElement("save-climb-button").addEventListener("click", handleSaveClimb);
+  findElement("export-button").addEventListener("click", handleExport);
+  findElement("import-add-button").addEventListener("click", handleImportMerge);
+  findElement("import-replace-button").addEventListener("click", handleImportReplace);
+
+  var tabButtons = document.querySelectorAll(".tab");
+  for (var tabIndex = 0; tabIndex < tabButtons.length; tabIndex += 1) {
+    connectTabButton(tabButtons[tabIndex]);
+  }
+  showScreen("log");
+}
+
+/**
+ * Connects one tab button to its screen.
+ * @param {Element} tabButton - The button.
+ * @returns {void}
+ */
+function connectTabButton(tabButton) {
+  tabButton.addEventListener("click", function openScreen() {
+    showScreen(tabButton.dataset.screenName);
+  });
+}
+
+/* The service worker keeps a copy of the app on the phone. Without it the app
+   needs a signal to open. A browser with no support for it still runs. */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function registerWorker() {
+    navigator.serviceWorker.register("service-worker.js").catch(function reportFailure(error) {
+      console.warn("The offline copy is not available: " + error.message);
+    });
+  });
+}
+
+start();
+</script>
+</body>
+</html>
