@@ -92,6 +92,10 @@ APPROVED-BY: (self, personal project)    DATE: 2026-09-02
 
 * { box-sizing: border-box; }
 
+/* The hidden attribute must always win. A display rule on a class, such as
+   the flex rows below, would otherwise show an element that the code hid. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   padding: 0 0 calc(74px + env(safe-area-inset-bottom));
@@ -450,7 +454,7 @@ details[open] > .tree-summary::before { content: "\25BE"; }
         </div>
       </div>
 
-      <div class="field-pair compact-row">
+      <div class="field-pair compact-row" id="log-boulder-row">
         <div class="picker-slot" id="log-boulder-slot">
           <select id="log-boulder-select" aria-label="Boulder"></select>
           <div class="picker-new" id="log-boulder-new" hidden>
@@ -639,6 +643,13 @@ details[open] > .tree-summary::before { content: "\25BE"; }
     </div>
 
     <div class="panel">
+      <h3>Clean up</h3>
+      <p class="quiet-text">A climb that has both a sent entry and a not-sent entry counts as tried
+        twice. This removes the not-sent one.</p>
+      <button type="button" id="remove-duplicates-button" class="button-quiet">Remove not-sent duplicates</button>
+    </div>
+
+    <div class="panel">
       <h3>Status</h3>
       <p id="storage-status" class="quiet-text"></p>
     </div>
@@ -798,6 +809,7 @@ function readSettings() {
     areaName: "",
     boulderName: "",
     isLocationOn: false,
+    isIndoor: false,
     duelPeople: ["Me"],
     coordinateFormat: "DMS",
     northOrSouth: "N",
@@ -871,12 +883,14 @@ function validateClimb(rawClimb) {
   var climbName = cleanText(rawClimb.climbName);
 
   if (localeName.length === 0) {
-    return { climb: null, errorMessage: "The locale is empty. Enter a locale." };
+    return { climb: null, errorMessage: "The locale is empty. Enter a locale or a gym." };
   }
-  if (areaName.length === 0) {
+  /* An indoor gym has no area and no boulder. Both stay empty for it. */
+  var isIndoor = rawClimb.isIndoor === true;
+  if (isIndoor === false && areaName.length === 0) {
     return { climb: null, errorMessage: "The area is empty. Enter an area." };
   }
-  if (boulderName.length === 0) {
+  if (isIndoor === false && boulderName.length === 0) {
     return { climb: null, errorMessage: "The boulder is empty. Enter a boulder." };
   }
   if (climbName.length === 0) {
@@ -2099,7 +2113,9 @@ function mergeDuels(existingDuels, newDuels) {
 
    ASSUMPTIONS
      V points count sends only. VB, V0, and V1 are worth 1 point each. From
-     V2 up the grade is the points, to V17 at 17. A no-send is worth 0.
+     V2 up the grade is the points, to V17 at 17. A climb that was not sent
+     is a database entry, not a climb: it is worth 0 and is never counted as
+     climbed anywhere on the screen.
    ========================================================================== */
 
 /* VB, V0, and V1 are each worth 1 point. From V2 up, the grade is the points. */
@@ -2302,7 +2318,7 @@ function finishSessions(sessionByDate) {
  * @returns {string} Text such as "Joshua Tree \u00b7 Jumbo Rocks".
  */
 function makePlaceText(localeName, areaName) {
-  return localeName + " \u00b7 " + areaName;
+  return areaName.length === 0 ? localeName : localeName + " \u00b7 " + areaName;
 }
 
 /**
@@ -2398,6 +2414,59 @@ function findBoulderCoordinates(climbs, place) {
 }
 
 /**
+ * Finds every entry of one climb on one boulder, newest first.
+ * @param {Array} climbs - Validated climb records, newest first.
+ * @param {object} place - localeName, areaName, and boulderName.
+ * @param {string} climbName - The climb.
+ * @returns {Array} The matching records.
+ */
+function findClimbEntries(climbs, place, climbName) {
+  if (Array.isArray(climbs) === false) {
+    throw new Error("findClimbEntries needs an array. Got " + typeof climbs + ".");
+  }
+  return climbs.filter(function isTheClimb(climb) {
+    return isOnBoulder(climb, place) === true && climb.climbName === climbName;
+  });
+}
+
+/**
+ * Finds the not-sent entries that sit beside a sent entry of the same climb.
+ * Those are leftovers from before the save rule joined them, and they make
+ * a climb look twice as tried as it was.
+ * @param {Array} climbs - Validated climb records.
+ * @returns {Array} The identifiers of the not-sent entries to remove.
+ */
+function listDuplicateNotSentEntries(climbs) {
+  if (Array.isArray(climbs) === false) {
+    throw new Error("listDuplicateNotSentEntries needs an array. Got " + typeof climbs + ".");
+  }
+  var sentKeys = {};
+  for (var sentIndex = 0; sentIndex < climbs.length; sentIndex += 1) {
+    var sentClimb = climbs[sentIndex];
+    if (sentClimb.isSend === true) {
+      sentKeys[makeClimbKey(sentClimb)] = true;
+    }
+  }
+  var identifiers = [];
+  for (var climbIndex = 0; climbIndex < climbs.length; climbIndex += 1) {
+    var climb = climbs[climbIndex];
+    if (climb.isSend === false && sentKeys[makeClimbKey(climb)] === true) {
+      identifiers.push(climb.identifier);
+    }
+  }
+  return identifiers;
+}
+
+/**
+ * Builds the key that says which climb an entry is.
+ * @param {object} climb - A validated climb record.
+ * @returns {string} The four names joined.
+ */
+function makeClimbKey(climb) {
+  return [climb.localeName, climb.areaName, climb.boulderName, climb.climbName].join("\u0000");
+}
+
+/**
  * Counts how many climbs on one boulder already carry an unnamed label for
  * one grade, so that the next one gets the next number.
  * @param {Array} climbs - Validated climb records.
@@ -2430,12 +2499,14 @@ function buildPlaceTree(climbs) {
   var localeByName = {};
   for (var climbIndex = 0; climbIndex < climbs.length; climbIndex += 1) {
     var climb = climbs[climbIndex];
+    var areaName = climb.areaName.length === 0 ? "Indoor" : climb.areaName;
+    var boulderName = climb.boulderName.length === 0 ? "Indoor" : climb.boulderName;
     var locale = localeByName[climb.localeName] ||
-      (localeByName[climb.localeName] = { name: climb.localeName, climbCount: 0, areaByName: {} });
-    var area = locale.areaByName[climb.areaName] ||
-      (locale.areaByName[climb.areaName] = { name: climb.areaName, climbCount: 0, boulderByName: {} });
-    var boulder = area.boulderByName[climb.boulderName] ||
-      (area.boulderByName[climb.boulderName] = { name: climb.boulderName, climbCount: 0, climbByName: {} });
+      (localeByName[climb.localeName] = { name: climb.localeName, climbCount: 0, sendCount: 0, areaByName: {} });
+    var area = locale.areaByName[areaName] ||
+      (locale.areaByName[areaName] = { name: areaName, climbCount: 0, sendCount: 0, boulderByName: {} });
+    var boulder = area.boulderByName[boulderName] ||
+      (area.boulderByName[boulderName] = { name: boulderName, climbCount: 0, sendCount: 0, climbByName: {} });
     var leaf = boulder.climbByName[climb.climbName] ||
       (boulder.climbByName[climb.climbName] = { name: climb.climbName, climbCount: 0, sendCount: 0,
         gradeValue: climb.gradeValue, lastDateOnly: readDateOnly(climb.climbedAtIso) });
@@ -2444,6 +2515,9 @@ function buildPlaceTree(climbs) {
     boulder.climbCount += 1;
     leaf.climbCount += 1;
     if (climb.isSend === true) {
+      locale.sendCount += 1;
+      area.sendCount += 1;
+      boulder.sendCount += 1;
       leaf.sendCount += 1;
     }
   }
@@ -2725,8 +2799,7 @@ function makeDayHeading(dateOnly, climbs) {
     return readDateOnly(climb.climbedAtIso) === dateOnly;
   });
   var dayTotals = countTotals(dayClimbs);
-  var summaryText = dayTotals.sendCount + " of " + dayTotals.climbCount + " sent, " +
-    dayTotals.pointTotal + " V points";
+  var summaryText = dayTotals.sendCount + " sent, " + dayTotals.pointTotal + " V points";
 
   var heading = makeElement("div", "day-heading", "");
   heading.appendChild(makeElement("span", "day-date", makeDateText(dateOnly)));
@@ -2750,12 +2823,14 @@ function makeClimbRow(climb, onRemoveClimb, onEditClimb) {
   var detail = makeElement("div", "climb-detail", "");
   detail.appendChild(makeElement("div", "climb-name", climb.climbName));
 
-  var placeParts = [climb.localeName, climb.areaName, climb.boulderName];
+  var placeParts = [climb.localeName, climb.areaName, climb.boulderName].filter(function isFilled(part) {
+    return part.length > 0;
+  });
   if (climb.isIndoor === true) {
     placeParts.push("indoor");
   }
   if (climb.isSend === false) {
-    placeParts.push("no send");
+    placeParts.push("not sent");
   }
   detail.appendChild(makeElement("div", "climb-place", placeParts.join(" \u00b7 ")));
 
@@ -2796,14 +2871,18 @@ function drawPlaceTree(treeElement, climbs, onPickClimb) {
   }
   for (var localeIndex = 0; localeIndex < locales.length; localeIndex += 1) {
     var locale = locales[localeIndex];
-    var localeNode = makeTreeNode(locale.name, locale.climbCount + " climbs", 0);
+    var localeNode = makeTreeNode(locale.name, locale.sendCount + " sent", 0);
     for (var areaIndex = 0; areaIndex < locale.areas.length; areaIndex += 1) {
       var area = locale.areas[areaIndex];
-      var areaNode = makeTreeNode(area.name, area.climbCount + " climbs", 1);
+      var areaNode = makeTreeNode(area.name, area.sendCount + " sent", 1);
       for (var boulderIndex = 0; boulderIndex < area.boulders.length; boulderIndex += 1) {
         var boulder = area.boulders[boulderIndex];
-        var boulderNode = makeTreeNode(boulder.name, boulder.climbCount + " climbs", 2);
-        var place = { localeName: locale.name, areaName: area.name, boulderName: boulder.name };
+        var boulderNode = makeTreeNode(boulder.name, boulder.sendCount + " sent", 2);
+        var place = {
+          localeName: locale.name,
+          areaName: area.name === "Indoor" ? "" : area.name,
+          boulderName: boulder.name === "Indoor" ? "" : boulder.name
+        };
         for (var leafIndex = 0; leafIndex < boulder.climbs.length; leafIndex += 1) {
           boulderNode.appendChild(makeTreeLeaf(boulder.climbs[leafIndex], place, onPickClimb));
         }
@@ -2840,9 +2919,8 @@ function makeTreeNode(nodeName, detailText, depth) {
  */
 function makeTreeLeaf(leaf, place, onPickClimb) {
   var attemptCount = leaf.climbCount - leaf.sendCount;
-  var detailText = makeGradeText(leaf.gradeValue) + " \u00b7 " + leaf.sendCount +
-    (leaf.sendCount === 1 ? " send" : " sends") +
-    (attemptCount > 0 ? ", " + attemptCount + " no send" : "") + " \u00b7 " + leaf.lastDateOnly;
+  var detailText = makeGradeText(leaf.gradeValue) + " \u00b7 " + leaf.sendCount + " sent" +
+    (attemptCount > 0 ? ", " + attemptCount + " not sent" : "") + " \u00b7 " + leaf.lastDateOnly;
   var row = makeElement("button", "tree-leaf", "");
   row.type = "button";
   row.appendChild(makeElement("span", "tree-name", leaf.name));
@@ -2956,8 +3034,8 @@ function drawTotals(climbs) {
     : makeGradeText(totals.hardestSendGrade);
 
   var cells = [
-    { number: String(totals.climbCount), name: "Climbs" },
-    { number: String(totals.sendCount), name: "Sends" },
+    { number: String(totals.sendCount), name: "Sent" },
+    { number: String(totals.climbCount - totals.sendCount), name: "Not sent" },
     { number: String(totals.pointTotal), name: "V points" },
     { number: hardestText, name: "Hardest" }
   ];
@@ -3027,8 +3105,7 @@ function drawAreaList(climbs) {
     var row = makeElement("div", "list-row", "");
     row.appendChild(makeElement("span", "list-name", areaCount.areaName));
     row.appendChild(makeElement("span", "list-detail",
-      areaCount.sendCount + " of " + areaCount.climbCount + " sent \u00b7 " +
-      areaCount.boulderCount + " boulders"));
+      areaCount.sendCount + " sent \u00b7 " + areaCount.boulderCount + " boulders"));
     areaElement.appendChild(row);
   }
 }
@@ -3697,11 +3774,17 @@ function showPickerNew(prefix, isNew) {
  * @returns {string} The name, with no end spaces. Empty when nothing is chosen.
  */
 function readPickerValue(prefix) {
+  var typedValue = findElement(prefix + "-input").value.trim();
   if (findElement(prefix + "-new").hidden === false) {
-    return findElement(prefix + "-input").value.trim();
+    return typedValue;
   }
   var selectValue = findElement(prefix + "-select").value;
-  return selectValue === NEW_NAME_OPTION_VALUE ? "" : selectValue;
+  if (selectValue === NEW_NAME_OPTION_VALUE || selectValue === "") {
+    /* Text in the box counts even when the wheel is the one on show. This
+       covers a name typed before the wheel was put back. */
+    return typedValue;
+  }
+  return selectValue;
 }
 
 /**
@@ -3738,6 +3821,9 @@ function setPickerValue(prefix, name) {
  */
 function connectPicker(prefix, onChange) {
   var selectElement = findElement(prefix + "-select");
+  var reportChange = function reportChange() {
+    onChange(prefix);
+  };
   selectElement.addEventListener("change", function handleWheel() {
     if (selectElement.value === NEW_NAME_OPTION_VALUE) {
       findElement(prefix + "-input").value = "";
@@ -3746,12 +3832,12 @@ function connectPicker(prefix, onChange) {
       return;
     }
     selectElement.className = selectElement.value === "" ? "is-empty" : "";
-    onChange();
+    reportChange();
   });
-  findElement(prefix + "-input").addEventListener("change", onChange);
+  findElement(prefix + "-input").addEventListener("change", reportChange);
   findElement(prefix + "-list-button").addEventListener("click", function backToWheel() {
     setPickerValue(prefix, "");
-    onChange();
+    reportChange();
   });
 }
 
@@ -3822,6 +3908,7 @@ function setSendChoice(isSend) {
  */
 function setPlaceChoice(isIndoor) {
   formState.isIndoor = isIndoor === true;
+  writeSettings({ isIndoor: formState.isIndoor });
   findElement("indoor-button").setAttribute("aria-pressed", String(formState.isIndoor));
   findElement("outdoor-button").setAttribute("aria-pressed", String(formState.isIndoor === false));
   drawLocationVisibility();
@@ -3833,6 +3920,8 @@ function setPlaceChoice(isIndoor) {
  */
 function drawLocationVisibility() {
   var isOn = isLocationOn();
+  findElement("log-area-slot").hidden = formState.isIndoor;
+  findElement("log-boulder-row").hidden = formState.isIndoor;
   findElement("location-row").hidden = formState.isIndoor;
   findElement("coordinate-block").hidden = formState.isIndoor === true || isOn === false;
   for (var nameIndex = 0; nameIndex < COORDINATE_FORMATS.length; nameIndex += 1) {
@@ -3961,16 +4050,19 @@ function findChangedLevel(lastPlace, newPlace) {
  * when the location switch is on it finds the position of the boulder.
  * @returns {void}
  */
-function handlePlaceChange() {
-  var place = readPlace();
-  var lastSettings = readSettings();
-  var changedLevel = findChangedLevel(lastSettings, place);
-  if (changedLevel < 3) {
-    clearPickersBelow(LOG_PLACE_PREFIXES, "log-climb", changedLevel + 1);
+function handlePlaceChange(changedPrefix) {
+  var changedLevel = LOG_PLACE_PREFIXES.indexOf(changedPrefix);
+  if (changedLevel < 0) {
+    throw new Error("handlePlaceChange got an unknown picker: " + changedPrefix + ".");
   }
+  /* The pickers below the one that changed no longer apply. The ones above
+     it are left alone, even when the phone reports their change late. */
+  clearPickersBelow(LOG_PLACE_PREFIXES, "log-climb", changedLevel + 1);
+  var place = readPlace();
+  var isSameBoulder = findChangedLevel(readSettings(), place) === 3;
   writeSettings(place);
   refreshScreens();
-  if (changedLevel === 3) {
+  if (isSameBoulder === true) {
     return;
   }
   /* A different rock has a different position. The old one must go, or the
@@ -4075,8 +4167,10 @@ function readClimbForm() {
         longitudeDegrees: coordinateResult.longitudeDegrees, accuracyMeters: lastAccuracyMeters }
     : (editingClimb !== null && formState.isIndoor === false
         ? editingClimb : { latitudeDegrees: null, longitudeDegrees: null, accuracyMeters: null });
-  var place = readPlace();
-  var climbName = readPickerValue("log-climb");
+  var place = formState.isIndoor === true
+    ? { localeName: readPickerValue("log-locale"), areaName: "", boulderName: "" }
+    : readPlace();
+  var climbName = formState.isIndoor === true ? "" : readPickerValue("log-climb");
   var nowIso = new Date().toISOString();
   return {
     climbedAtIso: makeIsoFromDateBox(findElement("date-input").value,
@@ -4109,20 +4203,85 @@ function handleSaveClimb() {
   }
   try {
     var isEdit = formState.editingIdentifier.length > 0;
-    var result = isEdit === true
-      ? updateClimb(formState.editingIdentifier, rawClimb)
-      : addClimb(Object.assign({ identifier: makeClimbIdentifier(rawClimb.modifiedAtIso, Math.random()) }, rawClimb));
-    if (result.climb === null) {
-      showMessage(result.errorMessage, true);
+    var outcome = isEdit === true
+      ? { result: updateClimb(formState.editingIdentifier, rawClimb), verb: "Updated" }
+      : saveNewClimb(rawClimb);
+    if (outcome.result === null) {
+      showMessage(outcome.verb, true);
+      return;
+    }
+    if (outcome.result.climb === null) {
+      showMessage(outcome.result.errorMessage, true);
       return;
     }
     stopEditing();
     refreshScreens();
-    showMessage((isEdit === true ? "Updated " : "Saved ") + makeGradeText(result.climb.gradeValue) +
-      " " + result.climb.climbName + ".", false);
+    showMessage(outcome.verb + " " + makeGradeText(outcome.result.climb.gradeValue) +
+      " " + outcome.result.climb.climbName + ".", false);
   } catch (saveError) {
     showMessage(saveError.message, true);
   }
+}
+
+/**
+ * Applies the save rule for a climb that is not under edit. A not-sent entry
+ * is the place of a climb in the database, so a send fills that entry in
+ * instead of sitting beside it. Only a second send makes a second row.
+ * @param {object} rawClimb - The values from the form.
+ * @returns {object} result (from the store, or null to save nothing) and verb
+ *   (the word for the message, or the reason when nothing was saved).
+ */
+function saveNewClimb(rawClimb) {
+  var place = { localeName: rawClimb.localeName, areaName: rawClimb.areaName, boulderName: rawClimb.boulderName };
+  var entries = findClimbEntries(readAllClimbs(), place, rawClimb.climbName);
+  var notSentEntry = null;
+  var hasSentEntry = false;
+  for (var entryIndex = 0; entryIndex < entries.length; entryIndex += 1) {
+    if (entries[entryIndex].isSend === false && notSentEntry === null) {
+      notSentEntry = entries[entryIndex];
+    }
+    if (entries[entryIndex].isSend === true) {
+      hasSentEntry = true;
+    }
+  }
+  if (notSentEntry !== null) {
+    /* The climb was logged before without a send. This save fills that entry
+       in: a send flips it, a second attempt refreshes it. Either way the row
+       count does not grow. */
+    var verb = rawClimb.isSend === true ? "Sent" : "Updated";
+    return { result: updateClimb(notSentEntry.identifier, rawClimb), verb: verb };
+  }
+  if (rawClimb.isSend === false && hasSentEntry === true) {
+    return { result: null, verb: rawClimb.climbName + " is already logged as sent. Nothing saved." };
+  }
+  return {
+    result: addClimb(Object.assign({ identifier: makeClimbIdentifier(rawClimb.modifiedAtIso, Math.random()) }, rawClimb)),
+    verb: "Saved"
+  };
+}
+
+/**
+ * Removes the not-sent entries that sit beside a sent entry of the same
+ * climb. The Data screen offers this once for a log made before the save
+ * rule joined them.
+ * @returns {void}
+ */
+function handleRemoveDuplicates() {
+  var identifiers = listDuplicateNotSentEntries(readAllClimbs());
+  if (identifiers.length === 0) {
+    showMessage("No duplicate not-sent entries found.", false);
+    return;
+  }
+  if (window.confirm("Remove " + identifiers.length + " not-sent entries that also have a send? " +
+      "You cannot undo this.") === false) {
+    return;
+  }
+  var nowIso = new Date().toISOString();
+  for (var index = 0; index < identifiers.length; index += 1) {
+    removeClimb(identifiers[index], nowIso);
+  }
+  refreshScreens();
+  showMessage("Removed " + identifiers.length + " duplicate entries.", false);
 }
 
 /**
@@ -4210,15 +4369,13 @@ function handleRemoveClimb(identifier) {
 function handlePickFromTree(place, leaf) {
   stopEditing();
   showScreen("log");
-  setPickerValue("log-locale", place.localeName);
-  fillPlacePickers(LOG_PLACE_PREFIXES, "log-climb", readAllClimbs());
-  setPickerValue("log-area", place.areaName);
-  fillPlacePickers(LOG_PLACE_PREFIXES, "log-climb", readAllClimbs());
-  setPickerValue("log-boulder", place.boulderName);
-  fillPlacePickers(LOG_PLACE_PREFIXES, "log-climb", readAllClimbs());
+  restorePlacePickers(LOG_PLACE_PREFIXES, "log-climb", place, readAllClimbs());
   setPickerValue("log-climb", leaf.name);
+  writeSettings(place);
   setGradeValue(leaf.gradeValue);
-  handlePlaceChange();
+  refreshScreens();
+  writeCoordinates(null, null);
+  findBoulderPosition(place);
 }
 
 /* ------------------------------ DUEL SCREEN ------------------------------ */
@@ -4360,13 +4517,13 @@ function handleDuelClimbPick() {
  * Answers a change of the place on the Duel screen.
  * @returns {void}
  */
-function handleDuelPlaceChange() {
-  var place = readPlaceFromPickers(DUEL_PLACE_PREFIXES);
-  var lastPlace = readSettings().duelPlace || { localeName: "", areaName: "", boulderName: "" };
-  var changedLevel = findChangedLevel(lastPlace, place);
-  if (changedLevel < 3) {
-    clearPickersBelow(DUEL_PLACE_PREFIXES, "duel-climb", changedLevel + 1);
+function handleDuelPlaceChange(changedPrefix) {
+  var changedLevel = DUEL_PLACE_PREFIXES.indexOf(changedPrefix);
+  if (changedLevel < 0) {
+    throw new Error("handleDuelPlaceChange got an unknown picker: " + changedPrefix + ".");
   }
+  clearPickersBelow(DUEL_PLACE_PREFIXES, "duel-climb", changedLevel + 1);
+  var place = readPlaceFromPickers(DUEL_PLACE_PREFIXES);
   writeSettings({ duelPlace: place });
   fillPlacePickers(DUEL_PLACE_PREFIXES, "duel-climb", readPlaceRecords());
 }
@@ -4554,8 +4711,8 @@ function applyImportedText(csvText, isReplace) {
 function drawStorageStatus(climbCount, duelCount) {
   var isPersistent = getStorageIsPersistent();
   findElement("storage-status").textContent = isPersistent === true
-    ? climbCount + " climbs and " + duelCount + " duels are on this phone. Export after each trip."
-    : climbCount + " climbs are in memory only. They go away when you close the app.";
+    ? climbCount + " entries and " + duelCount + " duels are on this phone. Export after each trip."
+    : climbCount + " entries are in memory only. They go away when you close the app.";
   findElement("storage-warning").hidden = isPersistent;
 }
 
@@ -4637,7 +4794,7 @@ function start() {
   buildDuelGradeSelect();
   setGradeValue(0);
   setSendChoice(true);
-  setPlaceChoice(false);
+  setPlaceChoice(settings.isIndoor === true);
   connectCoordinateControls(showMessage);
   connectLogScreen();
   connectDuelScreen();
@@ -4645,6 +4802,7 @@ function start() {
   findElement("export-duels-button").addEventListener("click", handleExportDuels);
   findElement("import-add-button").addEventListener("click", function mergeFile() { readImportFile(false); });
   findElement("import-replace-button").addEventListener("click", function replaceFile() { readImportFile(true); });
+  findElement("remove-duplicates-button").addEventListener("click", handleRemoveDuplicates);
   var tabButtons = document.querySelectorAll(".tab");
   for (var tabIndex = 0; tabIndex < tabButtons.length; tabIndex += 1) {
     connectTabButton(tabButtons[tabIndex]);
