@@ -343,6 +343,71 @@ body { padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
   top: calc(8px + env(safe-area-inset-top)); margin: 0;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
 }
+
+/* --- Pickers: a native wheel, with a text box for a new name --------------- */
+
+.picker-slot select, .picker-slot input[type="search"] {
+  width: 100%; min-height: 38px; padding: 6px 9px; border: 1px solid var(--edge-color);
+  border-radius: 7px; background: var(--panel-background); color: var(--text-color);
+  font-size: 15px; font-family: inherit; -webkit-appearance: none; appearance: none;
+}
+.picker-slot select { background-image: linear-gradient(45deg, transparent 50%, var(--quiet-text-color) 50%),
+  linear-gradient(135deg, var(--quiet-text-color) 50%, transparent 50%);
+  background-position: calc(100% - 14px) 16px, calc(100% - 9px) 16px; background-size: 5px 5px; background-repeat: no-repeat; }
+.picker-slot select.is-empty { color: var(--quiet-text-color); }
+.picker-new { display: flex; gap: 4px; }
+.picker-new input { flex: 1 1 0; min-width: 0; }
+.picker-list-button {
+  flex: 0 0 38px; min-height: 38px; border: 1px solid var(--edge-color); border-radius: 7px;
+  background: var(--panel-background); color: var(--quiet-text-color); font-size: 18px; cursor: pointer;
+}
+input[type="search"] { -webkit-appearance: none; appearance: none; }
+input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: searchfield-cancel-button; }
+#log-screen input[type="search"], #log-screen input[type="date"] {
+  width: 100%; min-height: 38px; padding: 6px 9px; border: 1px solid var(--edge-color);
+  border-radius: 7px; background: var(--panel-background); color: var(--text-color);
+  font-size: 15px; font-family: inherit;
+}
+
+/* The grade grid: seven across, three down, VB to V17. */
+#grade-buttons { grid-template-columns: repeat(7, 1fr); }
+
+/* The save row: the date, the cancel button in edit mode, and Save. */
+.save-row { display: flex; gap: 5px; align-items: stretch; }
+.save-row input[type="date"] { flex: 1 1 0; min-width: 0; min-height: 42px; }
+.save-row .button-quiet { flex: 0 0 auto; min-height: 42px; padding: 6px 12px; font-size: 14px; }
+.save-row .button-primary { flex: 2 1 0; margin-top: 0; }
+#log-screen .save-row { margin-top: 6px; }
+
+/* --- The Browse tree ------------------------------------------------------- */
+
+.tree-node { border-bottom: 1px solid var(--edge-color); }
+.tree-summary { display: flex; justify-content: space-between; gap: 10px; min-height: 44px;
+  align-items: center; cursor: pointer; list-style: none; padding: 6px 0; }
+.tree-summary::-webkit-details-marker { display: none; }
+.tree-summary::before { content: "\25B8"; color: var(--quiet-text-color); margin-right: 8px; }
+details[open] > .tree-summary::before { content: "\25BE"; }
+.tree-depth-1 { margin-left: 14px; }
+.tree-depth-2 { margin-left: 14px; }
+.tree-name { font-weight: 600; flex: 1 1 auto; min-width: 0; }
+.tree-detail { font-size: 13px; color: var(--quiet-text-color); text-align: right; }
+.tree-leaf { display: flex; justify-content: space-between; gap: 10px; width: 100%; min-height: 44px;
+  align-items: center; margin-left: 14px; width: calc(100% - 14px); padding: 6px 0;
+  border: none; border-top: 1px solid var(--edge-color); background: transparent; color: var(--text-color);
+  font-family: inherit; font-size: 15px; text-align: left; cursor: pointer; }
+.tree-leaf .tree-name { font-weight: 500; }
+
+/* --- The Duel screen ------------------------------------------------------- */
+
+.duel-person-row { display: flex; gap: 5px; align-items: center; margin-top: 6px; }
+.duel-person-row .picker-slot { flex: 2 1 0; min-width: 0; }
+.duel-person-row input[type="number"] { flex: 1 1 0; min-width: 0; min-height: 38px; padding: 6px 9px;
+  border: 1px solid var(--edge-color); border-radius: 7px; background: var(--panel-background);
+  color: var(--text-color); font-size: 15px; font-family: inherit; text-align: center; }
+.duel-person-row .remove-button { min-height: 38px; padding: 4px 10px; }
+#duel-screen .field-pair { margin-top: 6px; }
+#duel-screen select { width: 100%; min-height: 38px; padding: 6px 9px; border: 1px solid var(--edge-color);
+  border-radius: 7px; background: var(--panel-background); color: var(--text-color); font-size: 15px; font-family: inherit; }
 </style>
 </head>
 <body>
@@ -365,32 +430,45 @@ body { padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
     <div class="panel">
 
       <div class="field-pair">
-        <div>
-          <input type="text" id="locale-input" list="locale-name-list" autocomplete="off"
-                 autocapitalize="words" placeholder="Locale" aria-label="Locale">
-          <datalist id="locale-name-list"></datalist>
+        <div class="picker-slot" id="log-locale-slot">
+          <select id="log-locale-select" aria-label="Locale"></select>
+          <div class="picker-new" id="log-locale-new" hidden>
+            <input type="search" id="log-locale-input" autocomplete="off" autocapitalize="words"
+                   placeholder="New locale" aria-label="New locale">
+            <button type="button" id="log-locale-list-button" class="picker-list-button"
+                    aria-label="Pick from the list">&#8801;</button>
+          </div>
         </div>
-        <div>
-          <input type="text" id="area-input" list="area-name-list" autocomplete="off"
-                 autocapitalize="words" placeholder="Area" aria-label="Area">
-          <datalist id="area-name-list"></datalist>
-        </div>
-      </div>
-
-      <div class="field-pair">
-        <div>
-          <input type="text" id="boulder-input" list="boulder-name-list" autocomplete="off"
-                 autocapitalize="words" placeholder="Boulder" aria-label="Boulder">
-          <datalist id="boulder-name-list"></datalist>
-        </div>
-        <div>
-          <input type="text" id="climb-name-input" autocomplete="off" autocapitalize="words"
-                 placeholder="Climb" aria-label="Climb">
+        <div class="picker-slot" id="log-area-slot">
+          <select id="log-area-select" aria-label="Area"></select>
+          <div class="picker-new" id="log-area-new" hidden>
+            <input type="search" id="log-area-input" autocomplete="off" autocapitalize="words"
+                   placeholder="New area" aria-label="New area">
+            <button type="button" id="log-area-list-button" class="picker-list-button"
+                    aria-label="Pick from the list">&#8801;</button>
+          </div>
         </div>
       </div>
 
-      <div id="known-climb-block" class="compact-row" hidden>
-        <div id="known-climb-buttons" aria-label="Climbs on this boulder"></div>
+      <div class="field-pair compact-row">
+        <div class="picker-slot" id="log-boulder-slot">
+          <select id="log-boulder-select" aria-label="Boulder"></select>
+          <div class="picker-new" id="log-boulder-new" hidden>
+            <input type="search" id="log-boulder-input" autocomplete="off" autocapitalize="words"
+                   placeholder="New boulder" aria-label="New boulder">
+            <button type="button" id="log-boulder-list-button" class="picker-list-button"
+                    aria-label="Pick from the list">&#8801;</button>
+          </div>
+        </div>
+        <div class="picker-slot" id="log-climb-slot">
+          <select id="log-climb-select" aria-label="Climb"></select>
+          <div class="picker-new" id="log-climb-new" hidden>
+            <input type="search" id="log-climb-input" autocomplete="off" autocapitalize="words"
+                   placeholder="New climb" aria-label="New climb">
+            <button type="button" id="log-climb-list-button" class="picker-list-button"
+                    aria-label="Pick from the list">&#8801;</button>
+          </div>
+        </div>
       </div>
 
       <div id="grade-buttons" class="compact-row" role="group" aria-label="Grade"></div>
@@ -404,9 +482,9 @@ body { padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
 
       <div id="location-row" class="choice-row compact-row">
         <button type="button" id="location-toggle-button" class="chip chip-toggle">Location off</button>
-        <button type="button" id="format-dd-button" class="chip">DD</button>
-        <button type="button" id="format-ddm-button" class="chip">DDM</button>
-        <button type="button" id="format-dms-button" class="chip">DMS</button>
+        <button type="button" id="format-dd-button" class="chip">Deg</button>
+        <button type="button" id="format-ddm-button" class="chip">Deg Min</button>
+        <button type="button" id="format-dms-button" class="chip">Deg Min Sec</button>
       </div>
 
       <div id="coordinate-block" hidden>
@@ -432,20 +510,100 @@ body { padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
         </div>
       </div>
 
-      <input type="text" id="notes-input" class="compact-row" autocomplete="off"
+      <input type="search" id="notes-input" class="compact-row" autocomplete="off"
              placeholder="Notes and beta (optional)" aria-label="Notes and beta">
 
-      <button type="button" id="save-climb-button" class="button-primary">Save climb</button>
+      <div class="save-row">
+        <input type="date" id="date-input" aria-label="Date of the climb">
+        <button type="button" id="cancel-edit-button" class="button-quiet" hidden>Cancel</button>
+        <button type="button" id="save-climb-button" class="button-primary">Save climb</button>
+      </div>
     </div>
   </section>
 
   <!-- ===================== SCREEN 2: THE CLIMB LIST ===================== -->
   <section id="climbs-screen" class="screen" hidden>
     <h2>Climbs</h2>
+    <p class="quiet-text">Tap a climb to edit it.</p>
     <div id="climb-list"></div>
   </section>
 
-  <!-- ===================== SCREEN 3: THE NUMBERS ===================== -->
+  <!-- ===================== SCREEN 3: BROWSE THE PLACE TREE ===================== -->
+  <section id="browse-screen" class="screen" hidden>
+    <h2>Browse</h2>
+    <p class="quiet-text">Tap a climb to open it on the Log screen.</p>
+    <div id="place-tree"></div>
+  </section>
+
+  <!-- ===================== SCREEN 4: DUELS ===================== -->
+  <section id="duel-screen" class="screen" hidden>
+    <h2>Duel</h2>
+    <div class="panel">
+      <div class="field-pair">
+        <div class="picker-slot" id="duel-locale-slot">
+          <select id="duel-locale-select" aria-label="Locale"></select>
+          <div class="picker-new" id="duel-locale-new" hidden>
+            <input type="search" id="duel-locale-input" autocomplete="off" autocapitalize="words"
+                   placeholder="New locale" aria-label="New locale">
+            <button type="button" id="duel-locale-list-button" class="picker-list-button"
+                    aria-label="Pick from the list">&#8801;</button>
+          </div>
+        </div>
+        <div class="picker-slot" id="duel-area-slot">
+          <select id="duel-area-select" aria-label="Area"></select>
+          <div class="picker-new" id="duel-area-new" hidden>
+            <input type="search" id="duel-area-input" autocomplete="off" autocapitalize="words"
+                   placeholder="New area" aria-label="New area">
+            <button type="button" id="duel-area-list-button" class="picker-list-button"
+                    aria-label="Pick from the list">&#8801;</button>
+          </div>
+        </div>
+      </div>
+      <div class="field-pair">
+        <div class="picker-slot" id="duel-boulder-slot">
+          <select id="duel-boulder-select" aria-label="Boulder"></select>
+          <div class="picker-new" id="duel-boulder-new" hidden>
+            <input type="search" id="duel-boulder-input" autocomplete="off" autocapitalize="words"
+                   placeholder="New boulder" aria-label="New boulder">
+            <button type="button" id="duel-boulder-list-button" class="picker-list-button"
+                    aria-label="Pick from the list">&#8801;</button>
+          </div>
+        </div>
+        <div class="picker-slot" id="duel-climb-slot">
+          <select id="duel-climb-select" aria-label="Climb"></select>
+          <div class="picker-new" id="duel-climb-new" hidden>
+            <input type="search" id="duel-climb-input" autocomplete="off" autocapitalize="words"
+                   placeholder="New climb" aria-label="New climb">
+            <button type="button" id="duel-climb-list-button" class="picker-list-button"
+                    aria-label="Pick from the list">&#8801;</button>
+          </div>
+        </div>
+      </div>
+      <div class="field-pair">
+        <div><select id="duel-grade-select" aria-label="Grade"></select></div>
+        <div><input type="date" id="duel-date-input" aria-label="Date of the duel" class="compact-row" style="margin-top:0"></div>
+      </div>
+
+      <span class="field-name">People and attempts (0 = no send)</span>
+      <div id="duel-people"></div>
+      <div class="button-row">
+        <button type="button" id="duel-add-person-button" class="button-quiet">Add a person</button>
+      </div>
+
+      <input type="search" id="duel-notes-input" class="compact-row" autocomplete="off"
+             placeholder="Notes (optional)" aria-label="Notes" style="width:100%;min-height:38px;padding:6px 9px;border:1px solid var(--edge-color);border-radius:7px;background:var(--panel-background);color:var(--text-color);font-size:15px;font-family:inherit">
+      <button type="button" id="save-duel-button" class="button-primary">Save duel</button>
+    </div>
+
+    <h3>Standings</h3>
+    <div id="duel-people-block"></div>
+    <h3>Head to head</h3>
+    <div id="duel-pair-block"></div>
+    <h3>Past duels</h3>
+    <div id="duel-list"></div>
+  </section>
+
+  <!-- ===================== SCREEN 5: THE NUMBERS ===================== -->
   <section id="stats-screen" class="screen" hidden>
     <h2>Stats</h2>
     <div id="total-block" class="total-row"></div>
@@ -457,19 +615,21 @@ body { padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
     <div id="session-block"></div>
   </section>
 
-  <!-- ===================== SCREEN 4: BACKUP AND RESTORE ===================== -->
+  <!-- ===================== SCREEN 6: BACKUP AND RESTORE ===================== -->
   <section id="data-screen" class="screen" hidden>
     <h2>Data</h2>
 
     <div class="panel">
       <h3>Backup</h3>
-      <p class="quiet-text">The CSV file holds every climb. Keep it in iCloud Drive.</p>
-      <button type="button" id="export-button" class="button-primary">Export CSV</button>
+      <p class="quiet-text">Two files: the climbs and the duels. Keep both in iCloud Drive.</p>
+      <button type="button" id="export-button" class="button-primary">Export climbs CSV</button>
+      <button type="button" id="export-duels-button" class="button-primary">Export duels CSV</button>
     </div>
 
     <div class="panel">
       <h3>Restore</h3>
-      <p class="quiet-text">Select a CSV file that this app exported.</p>
+      <p class="quiet-text">Select a CSV file that this app exported. The app reads the header to
+        tell a climbs file from a duels file.</p>
       <input type="file" id="import-file-input" accept=".csv,text/csv">
       <div class="button-row">
         <button type="button" id="import-add-button" class="button-quiet">Merge into log</button>
@@ -489,6 +649,8 @@ body { padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
 <nav id="tab-bar">
   <button type="button" class="tab" data-screen-name="log">Log</button>
   <button type="button" class="tab" data-screen-name="climbs">Climbs</button>
+  <button type="button" class="tab" data-screen-name="browse">Browse</button>
+  <button type="button" class="tab" data-screen-name="duel">Duel</button>
   <button type="button" class="tab" data-screen-name="stats">Stats</button>
   <button type="button" class="tab" data-screen-name="data">Data</button>
 </nav>
@@ -526,11 +688,15 @@ body { padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
 
 var CLIMB_RECORD_STORAGE_KEY = "climbTracker.climbs";
 var SETTING_STORAGE_KEY = "climbTracker.settings";
+var DUEL_RECORD_STORAGE_KEY = "climbTracker.duels";
+var MAXIMUM_DUEL_COUNT = 5000;
+var MAXIMUM_DUEL_PERSON_COUNT = 12;
 
 /* 20000 climbs is more than a lifetime of logging. The bound stops a bad
    import file from filling the storage of the phone. */
 var MAXIMUM_CLIMB_COUNT = 20000;
-var MINIMUM_GRADE_VALUE = 0;
+/* VB (V-beginner) is kept as -1. It shows as "VB" and is worth 1 point. */
+var MINIMUM_GRADE_VALUE = -1;
 var MAXIMUM_GRADE_VALUE = 17;
 var MAXIMUM_TEXT_LENGTH = 500;
 
@@ -632,6 +798,7 @@ function readSettings() {
     areaName: "",
     boulderName: "",
     isLocationOn: false,
+    duelPeople: ["Me"],
     coordinateFormat: "DMS",
     northOrSouth: "N",
     eastOrWest: "W"
@@ -723,7 +890,7 @@ function validateClimb(rawClimb) {
   if (gradeValue < MINIMUM_GRADE_VALUE || gradeValue > MAXIMUM_GRADE_VALUE) {
     return {
       climb: null,
-      errorMessage: "The grade is " + gradeValue + ". Select a grade from V0 to V17."
+      errorMessage: "The grade is " + gradeValue + ". Select a grade from VB to V17."
     };
   }
 
@@ -971,6 +1138,238 @@ function removeClimb(identifier, nowIso) {
  */
 function replaceAllClimbs(climbs) {
   writeAllClimbs(sortClimbsNewestFirst(climbs));
+}
+
+/**
+ * Replaces one climb record with new values. The identifier stays, so that a
+ * computer sees the same climb with a newer modified time.
+ * @param {string} identifier - The identifier of the climb to change.
+ * @param {object} rawClimb - Untrusted values from the log form.
+ * @returns {object} An object with climb and errorMessage.
+ */
+function updateClimb(identifier, rawClimb) {
+  if (typeof identifier !== "string" || identifier.length === 0) {
+    throw new Error("updateClimb needs an identifier. Got an empty value.");
+  }
+  var result = validateClimb(Object.assign({}, rawClimb, { identifier: identifier }));
+  if (result.climb === null) {
+    return result;
+  }
+  var climbs = readAllClimbsWithRemoved();
+  var wasFound = false;
+  for (var climbIndex = 0; climbIndex < climbs.length; climbIndex += 1) {
+    if (climbs[climbIndex].identifier === identifier) {
+      climbs[climbIndex] = result.climb;
+      wasFound = true;
+    }
+  }
+  if (wasFound === false) {
+    return { climb: null, errorMessage: "That climb is not in the log." };
+  }
+  writeAllClimbs(sortClimbsNewestFirst(climbs));
+  return result;
+}
+
+/* ---------------------------- DUEL RECORDS ------------------------------
+   A duel is one climb that two or more people try on the same day. Each
+   person has a count of attempts. The person with the fewest attempts wins.
+   A person with no send loses to any person with a send. Duels are kept
+   apart from the climb log and never change it. */
+
+/**
+ * Checks one raw duel record and converts it to a typed record.
+ * @param {object} rawDuel - Untrusted values.
+ * @returns {object} An object with duel and errorMessage. One is always null.
+ */
+function validateDuel(rawDuel) {
+  if (rawDuel === null || typeof rawDuel !== "object") {
+    return { duel: null, errorMessage: "The duel record is not an object." };
+  }
+  var placeError = findDuelPlaceError(rawDuel);
+  if (placeError !== null) {
+    return { duel: null, errorMessage: placeError };
+  }
+  var dueledAtIso = cleanText(rawDuel.dueledAtIso);
+  if (Number.isNaN(Date.parse(dueledAtIso)) === true) {
+    return { duel: null, errorMessage: "The date is not readable: " + dueledAtIso + "." };
+  }
+  var entryResult = validateDuelEntries(rawDuel.entries);
+  if (entryResult.errorMessage !== null) {
+    return { duel: null, errorMessage: entryResult.errorMessage };
+  }
+  var modifiedAtIso = cleanText(rawDuel.modifiedAtIso);
+  var duel = {
+    identifier: cleanText(rawDuel.identifier),
+    dueledAtIso: dueledAtIso,
+    modifiedAtIso: Number.isNaN(Date.parse(modifiedAtIso)) === true ? dueledAtIso : modifiedAtIso,
+    isDeleted: rawDuel.isDeleted === true,
+    localeName: cleanText(rawDuel.localeName),
+    areaName: cleanText(rawDuel.areaName),
+    boulderName: cleanText(rawDuel.boulderName),
+    climbName: cleanText(rawDuel.climbName),
+    gradeValue: Number(rawDuel.gradeValue),
+    notes: cleanText(rawDuel.notes),
+    entries: entryResult.entries
+  };
+  if (duel.identifier.length === 0) {
+    duel.identifier = "duel-" + makeClimbIdentifier(dueledAtIso, Math.random()).slice(6);
+  }
+  return { duel: duel, errorMessage: null };
+}
+
+/**
+ * Checks the place and the grade of a duel.
+ * @param {object} rawDuel - Untrusted values.
+ * @returns {string|null} The first problem, or null when all is well.
+ */
+function findDuelPlaceError(rawDuel) {
+  if (cleanText(rawDuel.localeName).length === 0) {
+    return "The locale is empty. Enter a locale.";
+  }
+  if (cleanText(rawDuel.areaName).length === 0) {
+    return "The area is empty. Enter an area.";
+  }
+  if (cleanText(rawDuel.boulderName).length === 0) {
+    return "The boulder is empty. Enter a boulder.";
+  }
+  if (cleanText(rawDuel.climbName).length === 0) {
+    return "The climb is empty. Enter a climb name.";
+  }
+  var gradeValue = Number(rawDuel.gradeValue);
+  if (Number.isInteger(gradeValue) === false ||
+      gradeValue < MINIMUM_GRADE_VALUE || gradeValue > MAXIMUM_GRADE_VALUE) {
+    return "The grade is not readable. Select a grade from VB to V17.";
+  }
+  return null;
+}
+
+/**
+ * Checks the people and their attempt counts. An empty count, or a count of
+ * 0, means the person did not send.
+ * @param {*} rawEntries - Untrusted values.
+ * @returns {object} An object with entries and errorMessage.
+ */
+function validateDuelEntries(rawEntries) {
+  if (Array.isArray(rawEntries) === false || rawEntries.length < 2) {
+    return { entries: null, errorMessage: "A duel needs at least two people." };
+  }
+  if (rawEntries.length > MAXIMUM_DUEL_PERSON_COUNT) {
+    return { entries: null, errorMessage: "A duel holds at most " + MAXIMUM_DUEL_PERSON_COUNT + " people." };
+  }
+  var entries = [];
+  var seenNames = {};
+  for (var entryIndex = 0; entryIndex < rawEntries.length; entryIndex += 1) {
+    var personName = cleanText(rawEntries[entryIndex].personName);
+    if (personName.length === 0) {
+      return { entries: null, errorMessage: "A person in the duel has no name." };
+    }
+    if (seenNames[personName] === true) {
+      return { entries: null, errorMessage: personName + " is in the duel twice." };
+    }
+    seenNames[personName] = true;
+    var rawAttempts = rawEntries[entryIndex].attemptCount;
+    var attemptCount = isFilledValue(rawAttempts) === true ? Number(rawAttempts) : 0;
+    if (Number.isInteger(attemptCount) === false || attemptCount < 0 || attemptCount > 999) {
+      return { entries: null, errorMessage: "The attempts for " + personName + " must be a whole number from 0 to 999." };
+    }
+    entries.push({ personName: personName, attemptCount: attemptCount });
+  }
+  return { entries: entries, errorMessage: null };
+}
+
+/**
+ * Reads every duel record, the removed ones included, newest first.
+ * @returns {Array} Validated duel records.
+ */
+function readAllDuelsWithRemoved() {
+  var storedText = readTextValue(DUEL_RECORD_STORAGE_KEY);
+  if (storedText === null || storedText.length === 0) {
+    return [];
+  }
+  var parsedRecords = [];
+  try {
+    parsedRecords = JSON.parse(storedText);
+  } catch (parseError) {
+    console.error("The stored duel log is damaged: " + parseError.message);
+    return [];
+  }
+  if (Array.isArray(parsedRecords) === false) {
+    return [];
+  }
+  var validDuels = [];
+  var recordCount = Math.min(parsedRecords.length, MAXIMUM_DUEL_COUNT);
+  for (var recordIndex = 0; recordIndex < recordCount; recordIndex += 1) {
+    var result = validateDuel(parsedRecords[recordIndex]);
+    if (result.duel !== null) {
+      validDuels.push(result.duel);
+    }
+  }
+  return validDuels.sort(function compareByDate(first, second) {
+    return Date.parse(second.dueledAtIso) - Date.parse(first.dueledAtIso);
+  });
+}
+
+/**
+ * Reads the duel records that the person still has, newest first.
+ * @returns {Array} Validated duel records.
+ */
+function readAllDuels() {
+  return readAllDuelsWithRemoved().filter(function isKept(duel) {
+    return duel.isDeleted === false;
+  });
+}
+
+/**
+ * Writes the full set of duel records.
+ * @param {Array} duels - Validated duel records.
+ * @returns {void}
+ */
+function writeAllDuels(duels) {
+  if (Array.isArray(duels) === false) {
+    throw new Error("writeAllDuels needs an array. Got " + typeof duels + ".");
+  }
+  if (duels.length > MAXIMUM_DUEL_COUNT) {
+    throw new Error("The duel log has " + duels.length + " duels. The limit is " + MAXIMUM_DUEL_COUNT + ".");
+  }
+  writeTextValue(DUEL_RECORD_STORAGE_KEY, JSON.stringify(duels));
+}
+
+/**
+ * Adds one duel record.
+ * @param {object} rawDuel - Untrusted values from the duel form.
+ * @returns {object} An object with duel and errorMessage.
+ */
+function addDuel(rawDuel) {
+  var result = validateDuel(rawDuel);
+  if (result.duel === null) {
+    return result;
+  }
+  var duels = readAllDuelsWithRemoved();
+  duels.push(result.duel);
+  writeAllDuels(duels);
+  return result;
+}
+
+/**
+ * Marks one duel as removed.
+ * @param {string} identifier - The identifier of the duel.
+ * @param {string} nowIso - The current time in ISO format.
+ * @returns {boolean} True when one record was marked.
+ */
+function removeDuel(identifier, nowIso) {
+  var duels = readAllDuelsWithRemoved();
+  var wasFound = false;
+  for (var duelIndex = 0; duelIndex < duels.length; duelIndex += 1) {
+    if (duels[duelIndex].identifier === identifier) {
+      duels[duelIndex].isDeleted = true;
+      duels[duelIndex].modifiedAtIso = nowIso;
+      wasFound = true;
+    }
+  }
+  if (wasFound === true) {
+    writeAllDuels(duels);
+  }
+  return wasFound;
 }
 
 /* ==========================================================================
@@ -1280,7 +1679,7 @@ function makeCsvRow(climb) {
     climb.areaName,
     climb.boulderName,
     climb.climbName,
-    climb.gradeValue,
+    makeGradeText(climb.gradeValue),
     climb.isSend === true ? "yes" : "no",
     climb.isIndoor === true ? "yes" : "no",
     climb.notes,
@@ -1392,16 +1791,20 @@ function readYesOrNo(rawValue) {
 }
 
 /**
- * Reads a V grade from a CSV file. Accepts "5", "V5", and "v5".
+ * Reads a V grade from a CSV file. Accepts "5", "V5", "v5", "VB", and "B".
  * @param {string} rawValue - The value from the file.
- * @returns {number} The grade number, or -1 when it is not readable.
+ * @returns {number} The grade number, VB as -1, or -99 when not readable.
  */
 function readGradeValue(rawValue) {
   if (typeof rawValue !== "string") {
-    return -1;
+    return -99;
   }
-  var gradeValue = Number(rawValue.trim().toLowerCase().replace(/^v/, ""));
-  return Number.isInteger(gradeValue) === true ? gradeValue : -1;
+  var cleanValue = rawValue.trim().toLowerCase().replace(/^v/, "");
+  if (cleanValue === "b") {
+    return MINIMUM_GRADE_VALUE;
+  }
+  var gradeValue = Number(cleanValue);
+  return Number.isInteger(gradeValue) === true ? gradeValue : -99;
 }
 
 /**
@@ -1559,6 +1962,120 @@ function mergeClimbs(existingClimbs, newClimbs) {
   return mergedClimbs;
 }
 
+/* ------------------------------ DUEL CSV --------------------------------
+   One row for each person in each duel. The duel_identifier column ties the
+   rows of one duel together. This keeps the file flat for a spreadsheet. */
+
+var DUEL_CSV_COLUMN_NAMES = [
+  "duel_identifier", "dueled_at_iso", "locale_name", "area_name", "boulder_name",
+  "climb_name", "grade_v_scale", "person_name", "attempts", "notes",
+  "modified_at_iso", "is_deleted"
+];
+
+/**
+ * Converts the duel log to CSV text.
+ * @param {Array} duels - Validated duel records, removed ones included.
+ * @returns {string} CSV text with a header row.
+ */
+function makeDuelCsvText(duels) {
+  if (Array.isArray(duels) === false) {
+    throw new Error("makeDuelCsvText needs an array. Got " + typeof duels + ".");
+  }
+  var rows = [DUEL_CSV_COLUMN_NAMES.join(",")];
+  for (var duelIndex = 0; duelIndex < duels.length; duelIndex += 1) {
+    var duel = duels[duelIndex];
+    for (var entryIndex = 0; entryIndex < duel.entries.length; entryIndex += 1) {
+      var entry = duel.entries[entryIndex];
+      rows.push([
+        duel.identifier, duel.dueledAtIso, duel.localeName, duel.areaName, duel.boulderName,
+        duel.climbName, makeGradeText(duel.gradeValue), entry.personName, entry.attemptCount,
+        duel.notes, duel.modifiedAtIso, duel.isDeleted === true ? "yes" : "no"
+      ].map(quoteCsvValue).join(","));
+    }
+  }
+  return rows.join("\r\n") + "\r\n";
+}
+
+/**
+ * Converts duel CSV text back into duel records. Rows with the same
+ * duel_identifier are joined into one duel.
+ * @param {string} csvText - The full text of a duel CSV file.
+ * @returns {object} An object with duels, rejectedRows, and errorMessage.
+ */
+function readDuelCsvText(csvText) {
+  var rows = parseCsvText(csvText);
+  if (rows.length < 2) {
+    return { duels: [], rejectedRows: [], errorMessage: "The file has no duel rows." };
+  }
+  var columnIndexByName = {};
+  for (var headerIndex = 0; headerIndex < rows[0].length; headerIndex += 1) {
+    columnIndexByName[rows[0][headerIndex].trim().toLowerCase()] = headerIndex;
+  }
+  for (var nameIndex = 0; nameIndex < DUEL_CSV_COLUMN_NAMES.length; nameIndex += 1) {
+    if (Object.prototype.hasOwnProperty.call(columnIndexByName, DUEL_CSV_COLUMN_NAMES[nameIndex]) === false) {
+      return { duels: [], rejectedRows: [], errorMessage: "The file has no column named " +
+        DUEL_CSV_COLUMN_NAMES[nameIndex] + ". Use a duel CSV file that this app exported." };
+    }
+  }
+  return joinDuelRows(rows, columnIndexByName);
+}
+
+/**
+ * Groups the rows of a duel file by duel_identifier and validates each duel.
+ * @param {Array} rows - The parsed rows. Row 0 is the header.
+ * @param {object} columnIndexByName - The header row, as a lookup.
+ * @returns {object} An object with duels, rejectedRows, and errorMessage.
+ */
+function joinDuelRows(rows, columnIndexByName) {
+  var rawDuelByIdentifier = {};
+  var identifierOrder = [];
+  for (var rowIndex = 1; rowIndex < rows.length; rowIndex += 1) {
+    var row = rows[rowIndex];
+    var readColumn = function readColumn(columnName) {
+      var columnIndex = columnIndexByName[columnName];
+      return columnIndex === undefined || columnIndex >= row.length ? "" : row[columnIndex];
+    };
+    var identifier = readColumn("duel_identifier").trim();
+    if (rawDuelByIdentifier[identifier] === undefined) {
+      identifierOrder.push(identifier);
+      rawDuelByIdentifier[identifier] = {
+        identifier: identifier, dueledAtIso: readColumn("dueled_at_iso").trim(),
+        modifiedAtIso: readColumn("modified_at_iso").trim(),
+        isDeleted: readYesOrNo(readColumn("is_deleted")),
+        localeName: readColumn("locale_name"), areaName: readColumn("area_name"),
+        boulderName: readColumn("boulder_name"), climbName: readColumn("climb_name"),
+        gradeValue: readGradeValue(readColumn("grade_v_scale")), notes: readColumn("notes"),
+        entries: [], firstRowNumber: rowIndex + 1
+      };
+    }
+    rawDuelByIdentifier[identifier].entries.push({
+      personName: readColumn("person_name"), attemptCount: readColumn("attempts").trim()
+    });
+  }
+  var duels = [];
+  var rejectedRows = [];
+  for (var orderIndex = 0; orderIndex < identifierOrder.length; orderIndex += 1) {
+    var rawDuel = rawDuelByIdentifier[identifierOrder[orderIndex]];
+    var result = validateDuel(rawDuel);
+    if (result.duel === null) {
+      rejectedRows.push({ rowNumber: rawDuel.firstRowNumber, errorMessage: result.errorMessage });
+    } else {
+      duels.push(result.duel);
+    }
+  }
+  return { duels: duels, rejectedRows: rejectedRows, errorMessage: null };
+}
+
+/**
+ * Joins two sets of duels by identifier, newer modified time wins.
+ * @param {Array} existingDuels - The duels already in the log.
+ * @param {Array} newDuels - The duels from the file.
+ * @returns {Array} The joined set.
+ */
+function mergeDuels(existingDuels, newDuels) {
+  return mergeClimbs(existingDuels, newDuels);
+}
+
 /* ==========================================================================
    SECTION 5 OF 8 - STATISTICS
 
@@ -1581,12 +2098,12 @@ function mergeClimbs(existingClimbs, newClimbs) {
      An input that is not an array raises an error.
 
    ASSUMPTIONS
-     V points count sends only. V0 is worth 1 point, V1 is worth 2 points, and
-     so on to V17 at 18 points. A climb that you did not send is worth 0.
+     V points count sends only. VB, V0, and V1 are worth 1 point each. From
+     V2 up the grade is the points, to V17 at 17. A no-send is worth 0.
    ========================================================================== */
 
-/* V0 must be worth more than zero, or a full day on V0 scores nothing. */
-var V_POINT_OFFSET = 1;
+/* VB, V0, and V1 are each worth 1 point. From V2 up, the grade is the points. */
+var MINIMUM_SEND_POINTS = 1;
 
 /**
  * Counts the points for one climb.
@@ -1600,7 +2117,7 @@ function countClimbPoints(climb) {
   if (climb.isSend !== true) {
     return 0;
   }
-  var points = climb.gradeValue + V_POINT_OFFSET;
+  var points = Math.max(MINIMUM_SEND_POINTS, climb.gradeValue);
   if (points < 1) {
     throw new Error("countClimbPoints returned " + points + " for a send.");
   }
@@ -1880,6 +2397,186 @@ function findBoulderCoordinates(climbs, place) {
   return null;
 }
 
+/**
+ * Counts how many climbs on one boulder already carry an unnamed label for
+ * one grade, so that the next one gets the next number.
+ * @param {Array} climbs - Validated climb records.
+ * @param {object} place - localeName, areaName, and boulderName.
+ * @param {string} baseName - The label with no number, such as "Unnamed V4".
+ * @returns {number} The count of climbs whose name starts with the label.
+ */
+function countUnnamedClimbs(climbs, place, baseName) {
+  var count = 0;
+  for (var climbIndex = 0; climbIndex < climbs.length; climbIndex += 1) {
+    var climb = climbs[climbIndex];
+    if (isOnBoulder(climb, place) === true && climb.climbName.indexOf(baseName) === 0) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+/**
+ * Builds the place tree: locales, their areas, their boulders, and the climbs
+ * on each boulder with a summary of the history on each climb.
+ * @param {Array} climbs - Validated climb records, newest first.
+ * @returns {Array} Locales in alphabetical order, each with areas, each with
+ *   boulders, each with climbs. Every level carries a climbCount.
+ */
+function buildPlaceTree(climbs) {
+  if (Array.isArray(climbs) === false) {
+    throw new Error("buildPlaceTree needs an array. Got " + typeof climbs + ".");
+  }
+  var localeByName = {};
+  for (var climbIndex = 0; climbIndex < climbs.length; climbIndex += 1) {
+    var climb = climbs[climbIndex];
+    var locale = localeByName[climb.localeName] ||
+      (localeByName[climb.localeName] = { name: climb.localeName, climbCount: 0, areaByName: {} });
+    var area = locale.areaByName[climb.areaName] ||
+      (locale.areaByName[climb.areaName] = { name: climb.areaName, climbCount: 0, boulderByName: {} });
+    var boulder = area.boulderByName[climb.boulderName] ||
+      (area.boulderByName[climb.boulderName] = { name: climb.boulderName, climbCount: 0, climbByName: {} });
+    var leaf = boulder.climbByName[climb.climbName] ||
+      (boulder.climbByName[climb.climbName] = { name: climb.climbName, climbCount: 0, sendCount: 0,
+        gradeValue: climb.gradeValue, lastDateOnly: readDateOnly(climb.climbedAtIso) });
+    locale.climbCount += 1;
+    area.climbCount += 1;
+    boulder.climbCount += 1;
+    leaf.climbCount += 1;
+    if (climb.isSend === true) {
+      leaf.sendCount += 1;
+    }
+  }
+  return sortTreeLevel(localeByName, "areaByName", "areas", function sortArea(areaNode) {
+    return sortTreeLevel({ x: areaNode }, "boulderByName", "boulders", function sortBoulder(boulderNode) {
+      return sortTreeLevel({ x: boulderNode }, "climbByName", "climbs", null)[0];
+    })[0];
+  });
+}
+
+/**
+ * Turns one level of the tree from a lookup into a sorted array.
+ * @param {object} nodeByName - The nodes of this level, keyed by name.
+ * @param {string} childKey - The lookup field to convert on each node.
+ * @param {string} childListName - The array field to create on each node.
+ * @param {Function|null} finishChild - Called on each child, or null.
+ * @returns {Array} The nodes in alphabetical order.
+ */
+function sortTreeLevel(nodeByName, childKey, childListName, finishChild) {
+  return Object.keys(nodeByName).sort().map(function finishNode(nodeName) {
+    var node = nodeByName[nodeName];
+    if (node[childKey] !== undefined) {
+      node[childListName] = Object.keys(node[childKey]).sort().map(function finishOne(childName) {
+        var child = node[childKey][childName];
+        return finishChild === null ? child : finishChild(child);
+      });
+      delete node[childKey];
+    }
+    return node;
+  });
+}
+
+/* ----------------------------- DUEL STANDINGS ---------------------------
+   A duel between three people is three head-to-head results. For each pair
+   the person with fewer attempts wins. Equal attempts is a draw. A person
+   with no send (0 attempts) loses to any person with a send, and two people
+   with no send draw. */
+
+/**
+ * Decides one head-to-head result.
+ * @param {number} firstAttempts - Attempts of the first person. 0 is no send.
+ * @param {number} secondAttempts - Attempts of the second person.
+ * @returns {number} 1 when the first person wins, -1 when the second wins,
+ *   0 for a draw.
+ */
+function compareAttempts(firstAttempts, secondAttempts) {
+  var firstSent = firstAttempts > 0;
+  var secondSent = secondAttempts > 0;
+  if (firstSent === false && secondSent === false) {
+    return 0;
+  }
+  if (firstSent === false) {
+    return -1;
+  }
+  if (secondSent === false) {
+    return 1;
+  }
+  if (firstAttempts === secondAttempts) {
+    return 0;
+  }
+  return firstAttempts < secondAttempts ? 1 : -1;
+}
+
+/**
+ * Counts wins, losses, and draws for every person, and for every pair.
+ * @param {Array} duels - Validated duel records.
+ * @returns {object} people (an array sorted by wins, then name) and pairs
+ *   (an array of {firstName, secondName, firstWins, secondWins, draws}).
+ */
+function countDuelStandings(duels) {
+  if (Array.isArray(duels) === false) {
+    throw new Error("countDuelStandings needs an array. Got " + typeof duels + ".");
+  }
+  var personByName = {};
+  var pairByKey = {};
+  for (var duelIndex = 0; duelIndex < duels.length; duelIndex += 1) {
+    var entries = duels[duelIndex].entries;
+    for (var firstIndex = 0; firstIndex < entries.length; firstIndex += 1) {
+      for (var secondIndex = firstIndex + 1; secondIndex < entries.length; secondIndex += 1) {
+        recordPairResult(personByName, pairByKey, entries[firstIndex], entries[secondIndex]);
+      }
+    }
+  }
+  var people = Object.keys(personByName).map(function readOne(name) { return personByName[name]; })
+    .sort(function compare(first, second) {
+      return second.wins - first.wins || first.name.localeCompare(second.name);
+    });
+  var pairs = Object.keys(pairByKey).sort().map(function readOne(key) { return pairByKey[key]; });
+  return { people: people, pairs: pairs };
+}
+
+/**
+ * Adds one head-to-head result to the standings.
+ * @param {object} personByName - The per-person totals, changed in place.
+ * @param {object} pairByKey - The per-pair totals, changed in place.
+ * @param {object} firstEntry - One person and attempts.
+ * @param {object} secondEntry - The other person and attempts.
+ * @returns {void}
+ */
+function recordPairResult(personByName, pairByKey, firstEntry, secondEntry) {
+  var names = [firstEntry.personName, secondEntry.personName].sort();
+  var first = names[0] === firstEntry.personName ? firstEntry : secondEntry;
+  var second = first === firstEntry ? secondEntry : firstEntry;
+  var outcome = compareAttempts(first.attemptCount, second.attemptCount);
+  var pairKey = names[0] + "\u0000" + names[1];
+  var pair = pairByKey[pairKey] ||
+    (pairByKey[pairKey] = { firstName: names[0], secondName: names[1], firstWins: 0, secondWins: 0, draws: 0 });
+  var firstPerson = personByName[names[0]] || (personByName[names[0]] = { name: names[0], wins: 0, losses: 0, draws: 0 });
+  var secondPerson = personByName[names[1]] || (personByName[names[1]] = { name: names[1], wins: 0, losses: 0, draws: 0 });
+  if (outcome === 1) {
+    pair.firstWins += 1; firstPerson.wins += 1; secondPerson.losses += 1;
+  } else if (outcome === -1) {
+    pair.secondWins += 1; secondPerson.wins += 1; firstPerson.losses += 1;
+  } else {
+    pair.draws += 1; firstPerson.draws += 1; secondPerson.draws += 1;
+  }
+}
+
+/**
+ * Collects every person name that the duel log has.
+ * @param {Array} duels - Validated duel records.
+ * @returns {Array} The names in alphabetical order.
+ */
+function listDuelPeople(duels) {
+  var nameSet = {};
+  for (var duelIndex = 0; duelIndex < duels.length; duelIndex += 1) {
+    for (var entryIndex = 0; entryIndex < duels[duelIndex].entries.length; entryIndex += 1) {
+      nameSet[duels[duelIndex].entries[entryIndex].personName] = true;
+    }
+  }
+  return Object.keys(nameSet).sort();
+}
+
 /* ==========================================================================
    SECTION 6 OF 8 - DRAWING THE SCREENS
 
@@ -1961,7 +2658,7 @@ function makeGradeText(gradeValue) {
   if (Number.isInteger(gradeValue) === false) {
     throw new Error("makeGradeText needs a whole number. Got " + gradeValue + ".");
   }
-  return "V" + gradeValue;
+  return gradeValue === MINIMUM_GRADE_VALUE ? "VB" : "V" + gradeValue;
 }
 
 /**
@@ -1989,12 +2686,12 @@ function makeDateText(dateOnly) {
  * @param {Function} onRemoveClimb - Called with the identifier of a climb.
  * @returns {void}
  */
-function drawClimbList(listElement, climbs, onRemoveClimb) {
+function drawClimbList(listElement, climbs, onRemoveClimb, onEditClimb) {
   if (Array.isArray(climbs) === false) {
     throw new Error("drawClimbList needs an array. Got " + typeof climbs + ".");
   }
-  if (typeof onRemoveClimb !== "function") {
-    throw new Error("drawClimbList needs a remove handler.");
+  if (typeof onRemoveClimb !== "function" || typeof onEditClimb !== "function") {
+    throw new Error("drawClimbList needs a remove handler and an edit handler.");
   }
   removeAllChildren(listElement);
 
@@ -2013,7 +2710,7 @@ function drawClimbList(listElement, climbs, onRemoveClimb) {
       listElement.appendChild(makeDayHeading(dateOnly, climbs));
       lastDateOnly = dateOnly;
     }
-    listElement.appendChild(makeClimbRow(climb, onRemoveClimb));
+    listElement.appendChild(makeClimbRow(climb, onRemoveClimb, onEditClimb));
   }
 }
 
@@ -2043,7 +2740,7 @@ function makeDayHeading(dateOnly, climbs) {
  * @param {Function} onRemoveClimb - Called with the identifier of the climb.
  * @returns {Element} The row.
  */
-function makeClimbRow(climb, onRemoveClimb) {
+function makeClimbRow(climb, onRemoveClimb, onEditClimb) {
   var row = makeElement("div", "climb-row", "");
   var gradeClassName = climb.isSend === true
     ? "climb-grade climb-grade-send"
@@ -2065,12 +2762,166 @@ function makeClimbRow(climb, onRemoveClimb) {
   if (climb.notes.length > 0) {
     detail.appendChild(makeElement("div", "climb-note", climb.notes));
   }
+  /* A tap on the words opens the climb in the form. The Remove button has its
+     own handler, and stopPropagation keeps a remove from also opening it. */
+  detail.addEventListener("click", function editThisClimb() {
+    onEditClimb(climb.identifier);
+  });
   row.appendChild(detail);
 
   var removeButton = makeElement("button", "remove-button", "Remove");
   removeButton.type = "button";
-  removeButton.addEventListener("click", function handleRemove() {
+  removeButton.addEventListener("click", function handleRemove(clickEvent) {
+    clickEvent.stopPropagation();
     onRemoveClimb(climb.identifier);
+  });
+  row.appendChild(removeButton);
+  return row;
+}
+
+/**
+ * Draws the Browse screen: the place tree, with the history of each climb.
+ * @param {Element} treeElement - The element to draw in.
+ * @param {Array} climbs - Validated climb records.
+ * @param {Function} onPickClimb - Called with a place and a climb leaf when
+ *   the person taps a climb, so that the Log screen can open on it.
+ * @returns {void}
+ */
+function drawPlaceTree(treeElement, climbs, onPickClimb) {
+  removeAllChildren(treeElement);
+  var locales = buildPlaceTree(climbs);
+  if (locales.length === 0) {
+    treeElement.appendChild(makeElement("p", "quiet-text", "No climbs yet."));
+    return;
+  }
+  for (var localeIndex = 0; localeIndex < locales.length; localeIndex += 1) {
+    var locale = locales[localeIndex];
+    var localeNode = makeTreeNode(locale.name, locale.climbCount + " climbs", 0);
+    for (var areaIndex = 0; areaIndex < locale.areas.length; areaIndex += 1) {
+      var area = locale.areas[areaIndex];
+      var areaNode = makeTreeNode(area.name, area.climbCount + " climbs", 1);
+      for (var boulderIndex = 0; boulderIndex < area.boulders.length; boulderIndex += 1) {
+        var boulder = area.boulders[boulderIndex];
+        var boulderNode = makeTreeNode(boulder.name, boulder.climbCount + " climbs", 2);
+        var place = { localeName: locale.name, areaName: area.name, boulderName: boulder.name };
+        for (var leafIndex = 0; leafIndex < boulder.climbs.length; leafIndex += 1) {
+          boulderNode.appendChild(makeTreeLeaf(boulder.climbs[leafIndex], place, onPickClimb));
+        }
+        areaNode.appendChild(boulderNode);
+      }
+      localeNode.appendChild(areaNode);
+    }
+    treeElement.appendChild(localeNode);
+  }
+}
+
+/**
+ * Builds one branch of the tree. The browser opens and closes it on a tap.
+ * @param {string} nodeName - The locale, area, or boulder.
+ * @param {string} detailText - The count shown beside the name.
+ * @param {number} depth - 0 for a locale, 1 for an area, 2 for a boulder.
+ * @returns {Element} A details element to put children in.
+ */
+function makeTreeNode(nodeName, detailText, depth) {
+  var node = makeElement("details", "tree-node tree-depth-" + depth, "");
+  var summary = makeElement("summary", "tree-summary", "");
+  summary.appendChild(makeElement("span", "tree-name", nodeName));
+  summary.appendChild(makeElement("span", "tree-detail", detailText));
+  node.appendChild(summary);
+  return node;
+}
+
+/**
+ * Builds one climb at the end of a branch.
+ * @param {object} leaf - The climb summary from the tree.
+ * @param {object} place - The boulder that holds it.
+ * @param {Function} onPickClimb - Called on a tap.
+ * @returns {Element} The leaf.
+ */
+function makeTreeLeaf(leaf, place, onPickClimb) {
+  var attemptCount = leaf.climbCount - leaf.sendCount;
+  var detailText = makeGradeText(leaf.gradeValue) + " \u00b7 " + leaf.sendCount +
+    (leaf.sendCount === 1 ? " send" : " sends") +
+    (attemptCount > 0 ? ", " + attemptCount + " no send" : "") + " \u00b7 " + leaf.lastDateOnly;
+  var row = makeElement("button", "tree-leaf", "");
+  row.type = "button";
+  row.appendChild(makeElement("span", "tree-name", leaf.name));
+  row.appendChild(makeElement("span", "tree-detail", detailText));
+  row.addEventListener("click", function pickThisClimb() {
+    onPickClimb(place, leaf);
+  });
+  return row;
+}
+
+/**
+ * Draws the standings and the past duels on the Duel screen.
+ * @param {Array} duels - Validated duel records, newest first.
+ * @param {Function} onRemoveDuel - Called with the identifier of a duel.
+ * @returns {void}
+ */
+function drawDuelRecords(duels, onRemoveDuel) {
+  var standings = countDuelStandings(duels);
+  var peopleElement = findElement("duel-people-block");
+  var pairElement = findElement("duel-pair-block");
+  var listElement = findElement("duel-list");
+  removeAllChildren(peopleElement);
+  removeAllChildren(pairElement);
+  removeAllChildren(listElement);
+
+  if (duels.length === 0) {
+    peopleElement.appendChild(makeElement("p", "quiet-text", "No duels yet."));
+    return;
+  }
+  for (var personIndex = 0; personIndex < standings.people.length; personIndex += 1) {
+    var person = standings.people[personIndex];
+    peopleElement.appendChild(makeListRow(person.name,
+      person.wins + " W \u00b7 " + person.losses + " L \u00b7 " + person.draws + " D"));
+  }
+  for (var pairIndex = 0; pairIndex < standings.pairs.length; pairIndex += 1) {
+    var pair = standings.pairs[pairIndex];
+    pairElement.appendChild(makeListRow(pair.firstName + " vs " + pair.secondName,
+      pair.firstWins + " \u2013 " + pair.secondWins + (pair.draws > 0 ? " \u00b7 " + pair.draws + " D" : "")));
+  }
+  for (var duelIndex = 0; duelIndex < duels.length; duelIndex += 1) {
+    listElement.appendChild(makeDuelRow(duels[duelIndex], onRemoveDuel));
+  }
+}
+
+/**
+ * Builds a two-part list row.
+ * @param {string} nameText - The left text.
+ * @param {string} detailText - The right text.
+ * @returns {Element} The row.
+ */
+function makeListRow(nameText, detailText) {
+  var row = makeElement("div", "list-row", "");
+  row.appendChild(makeElement("span", "list-name", nameText));
+  row.appendChild(makeElement("span", "list-detail", detailText));
+  return row;
+}
+
+/**
+ * Builds one row of the past duels.
+ * @param {object} duel - A validated duel record.
+ * @param {Function} onRemoveDuel - Called with the identifier of the duel.
+ * @returns {Element} The row.
+ */
+function makeDuelRow(duel, onRemoveDuel) {
+  var row = makeElement("div", "climb-row", "");
+  row.appendChild(makeElement("span", "climb-grade", makeGradeText(duel.gradeValue)));
+  var detail = makeElement("div", "climb-detail", "");
+  detail.appendChild(makeElement("div", "climb-name", duel.climbName));
+  detail.appendChild(makeElement("div", "climb-place",
+    duel.boulderName + " \u00b7 " + makeDateText(readDateOnly(duel.dueledAtIso))));
+  var entryTexts = duel.entries.map(function describe(entry) {
+    return entry.personName + " " + (entry.attemptCount === 0 ? "\u2014" : entry.attemptCount);
+  });
+  detail.appendChild(makeElement("div", "climb-note", entryTexts.join(" \u00b7 ")));
+  row.appendChild(detail);
+  var removeButton = makeElement("button", "remove-button", "Remove");
+  removeButton.type = "button";
+  removeButton.addEventListener("click", function handleRemove() {
+    onRemoveDuel(duel.identifier);
   });
   row.appendChild(removeButton);
   return row;
@@ -2668,42 +3519,43 @@ function openMapForCoordinates(onMessage) {
    SECTION 8 OF 8 - THE APP
 
    WHAT THIS SECTION DOES
-     Joins the other sections together. It answers every tap, it keeps the
-     locale, the area, and the boulder between climbs, it gets one GPS fix for
-     each new boulder when the location switch is on, and it saves each climb
-     the moment you tap Save.
+     Joins the other sections together. It runs the pickers, the Log screen,
+     the edit of a climb, the Browse tree, the Duel screen, and the Data
+     screen. It saves each climb and each duel the moment you tap Save.
 
    INPUTS
      Taps and text from the person.
 
    OUTPUTS
-     The four screens.
+     The six screens.
 
    SIDE EFFECTS
-     Writes the climb records and the settings to the storage of the browser.
-     Makes a CSV file for download.
+     Writes the climb records, the duel records, and the settings to the
+     storage of the browser. Makes CSV files for download.
 
    FAILURE MODES
-     A climb with no name or a bad position shows the reason and saves
-     nothing. A full storage area shows a message that tells you to export.
+     A climb or a duel with a bad value shows the reason and saves nothing.
+     A full storage area shows a message that tells you to export.
 
    ASSUMPTIONS
      One person, one phone. A computer merges the CSV files later. A climb
-     gets coordinates only when the location switch is on.
+     gets coordinates only when the location switch is on. A duel never
+     changes the climb log.
    ========================================================================== */
 
-var LOWEST_GRADE_VALUE = 0;
-var HIGHEST_GRADE_VALUE = 17;
 var MESSAGE_TIMEOUT_MILLISECONDS = 5000;
 var FILE_ADDRESS_RELEASE_MILLISECONDS = 1000;
-var SCREEN_NAMES = ["log", "climbs", "stats", "data"];
+var SCREEN_NAMES = ["log", "climbs", "browse", "duel", "stats", "data"];
+var NEW_NAME_OPTION_VALUE = "__new__";
+var LOG_PLACE_PREFIXES = ["log-locale", "log-area", "log-boulder"];
+var DUEL_PLACE_PREFIXES = ["duel-locale", "duel-area", "duel-boulder"];
 
 /* DEVIATION: CCW-2.3 (no mutable state at module level)
-   REASON: The grade, the result, and the place must live from one tap to the
-     next, and the browser gives no other place to keep them.
-   LIMIT: One object. Every climb still passes validation before it is saved.
+   REASON: The grade, the result, the place, and the climb under edit must
+     live from one tap to the next, and the browser gives no other place.
+   LIMIT: One object. Every record still passes validation before it is saved.
    APPROVED-BY: (self, personal project)    DATE: 2026-09-03 */
-var formState = { gradeValue: 0, isSend: true, isIndoor: false };
+var formState = { gradeValue: 0, isSend: true, isIndoor: false, editingIdentifier: "" };
 
 /**
  * Shows a short message at the top of the page.
@@ -2722,7 +3574,7 @@ function showMessage(messageText, isError) {
 }
 
 /**
- * Shows one screen and hides the other three.
+ * Shows one screen and hides the other five.
  * @param {string} screenName - One of the names in SCREEN_NAMES.
  * @returns {void}
  */
@@ -2731,8 +3583,7 @@ function showScreen(screenName) {
     throw new Error("showScreen got an unknown screen: " + screenName + ".");
   }
   for (var nameIndex = 0; nameIndex < SCREEN_NAMES.length; nameIndex += 1) {
-    findElement(SCREEN_NAMES[nameIndex] + "-screen").hidden =
-      SCREEN_NAMES[nameIndex] !== screenName;
+    findElement(SCREEN_NAMES[nameIndex] + "-screen").hidden = SCREEN_NAMES[nameIndex] !== screenName;
   }
   var tabButtons = document.querySelectorAll(".tab");
   for (var tabIndex = 0; tabIndex < tabButtons.length; tabIndex += 1) {
@@ -2743,39 +3594,181 @@ function showScreen(screenName) {
 }
 
 /**
- * Reads the three place names from the Log screen.
- * @returns {object} localeName, areaName, and boulderName, with no end spaces.
+ * Writes the date of today in the form YYYY-MM-DD, in local time.
+ * @returns {string} The date.
  */
-function readPlace() {
-  return {
-    localeName: findElement("locale-input").value.trim(),
-    areaName: findElement("area-input").value.trim(),
-    boulderName: findElement("boulder-input").value.trim()
-  };
+function readTodayDateOnly() {
+  var now = new Date();
+  var monthText = String(now.getMonth() + 1);
+  var dayText = String(now.getDate());
+  return now.getFullYear() + "-" + (monthText.length < 2 ? "0" + monthText : monthText) +
+    "-" + (dayText.length < 2 ? "0" + dayText : dayText);
 }
 
 /**
- * Reports whether all three place names are filled.
- * @param {object} place - localeName, areaName, and boulderName.
- * @returns {boolean} True when none of the three is empty.
+ * Turns the date from a date box into an ISO time. Today gives the time
+ * now. Another day gives midday on that day, so the date is right in any
+ * time zone. An unchanged date on an edited record keeps the original time.
+ * @param {string} dateOnly - The value of the date box, YYYY-MM-DD.
+ * @param {string} originalIso - The ISO time of the record under edit, or "".
+ * @returns {string} The ISO time.
  */
-function isPlaceComplete(place) {
-  return place.localeName.length > 0 && place.areaName.length > 0 &&
-    place.boulderName.length > 0;
+function makeIsoFromDateBox(dateOnly, originalIso) {
+  if (typeof dateOnly !== "string" || dateOnly.length !== 10) {
+    return new Date().toISOString();
+  }
+  if (originalIso.length > 0 && readDateOnly(originalIso) === dateOnly) {
+    return originalIso;
+  }
+  if (dateOnly === readTodayDateOnly()) {
+    return new Date().toISOString();
+  }
+  return new Date(dateOnly + "T12:00:00").toISOString();
+}
+
+/* ------------------------------- PICKERS --------------------------------
+   Each picker is a native select, which iOS shows as a wheel, plus a text
+   box that appears when you choose "New..." so that you can type a name the
+   list does not have. The list button beside the box goes back to the wheel.
+   The pair shares one slot, so the screen height does not change. */
+
+/**
+ * Fills one picker with names. The current choice is kept when it is still
+ * in the list, or when it is a new name in the text box.
+ * @param {string} prefix - The picker, such as "log-area".
+ * @param {Array} names - The names to offer.
+ * @param {string} emptyLabel - The text of the empty choice, such as "Area".
+ * @param {Object|null} labelByName - Extra text for each name, or null.
+ * @returns {void}
+ */
+function fillPicker(prefix, names, emptyLabel, labelByName) {
+  var selectElement = findElement(prefix + "-select");
+  var currentValue = selectElement.value;
+  removeAllChildren(selectElement);
+  selectElement.appendChild(makeOption("", emptyLabel));
+  for (var nameIndex = 0; nameIndex < names.length; nameIndex += 1) {
+    var name = names[nameIndex];
+    var label = labelByName !== null && labelByName[name] !== undefined
+      ? name + "  \u00b7  " + labelByName[name]
+      : name;
+    selectElement.appendChild(makeOption(name, label));
+  }
+  selectElement.appendChild(makeOption(NEW_NAME_OPTION_VALUE, "New\u2026"));
+  selectElement.value = names.indexOf(currentValue) >= 0 ? currentValue : "";
+
+  /* A name typed as new is on the wheel once a save puts it in the records.
+     Move back to the wheel then, so that the text box is not left open. */
+  var typedValue = findElement(prefix + "-input").value.trim();
+  if (findElement(prefix + "-new").hidden === false && names.indexOf(typedValue) >= 0) {
+    selectElement.value = typedValue;
+    findElement(prefix + "-input").value = "";
+    showPickerNew(prefix, false);
+  }
+  selectElement.className = selectElement.value === "" ? "is-empty" : "";
 }
 
 /**
- * Builds the eighteen grade buttons, from V0 to V17.
+ * Builds one option of a select.
+ * @param {string} optionValue - The value.
+ * @param {string} optionLabel - The text.
+ * @returns {Element} The option.
+ */
+function makeOption(optionValue, optionLabel) {
+  var optionElement = document.createElement("option");
+  optionElement.value = optionValue;
+  optionElement.textContent = optionLabel;
+  return optionElement;
+}
+
+/**
+ * Shows the wheel or the text box of one picker.
+ * @param {string} prefix - The picker.
+ * @param {boolean} isNew - True to show the text box.
+ * @returns {void}
+ */
+function showPickerNew(prefix, isNew) {
+  findElement(prefix + "-select").hidden = isNew === true;
+  findElement(prefix + "-new").hidden = isNew !== true;
+}
+
+/**
+ * Reads the name that one picker holds.
+ * @param {string} prefix - The picker.
+ * @returns {string} The name, with no end spaces. Empty when nothing is chosen.
+ */
+function readPickerValue(prefix) {
+  if (findElement(prefix + "-new").hidden === false) {
+    return findElement(prefix + "-input").value.trim();
+  }
+  var selectValue = findElement(prefix + "-select").value;
+  return selectValue === NEW_NAME_OPTION_VALUE ? "" : selectValue;
+}
+
+/**
+ * Puts a name into one picker. A name that the wheel has is chosen on the
+ * wheel. Any other name goes into the text box.
+ * @param {string} prefix - The picker.
+ * @param {string} name - The name. Empty text chooses nothing.
+ * @returns {void}
+ */
+function setPickerValue(prefix, name) {
+  var selectElement = findElement(prefix + "-select");
+  var hasOption = false;
+  for (var optionIndex = 0; optionIndex < selectElement.options.length; optionIndex += 1) {
+    if (selectElement.options[optionIndex].value === name && name !== NEW_NAME_OPTION_VALUE) {
+      hasOption = true;
+    }
+  }
+  if (name.length === 0 || hasOption === true) {
+    selectElement.value = name;
+    findElement(prefix + "-input").value = "";
+    showPickerNew(prefix, false);
+  } else {
+    findElement(prefix + "-input").value = name;
+    showPickerNew(prefix, true);
+  }
+  selectElement.className = selectElement.value === "" ? "is-empty" : "";
+}
+
+/**
+ * Connects the wheel, the text box, and the list button of one picker.
+ * @param {string} prefix - The picker.
+ * @param {Function} onChange - Called after any change of the name.
+ * @returns {void}
+ */
+function connectPicker(prefix, onChange) {
+  var selectElement = findElement(prefix + "-select");
+  selectElement.addEventListener("change", function handleWheel() {
+    if (selectElement.value === NEW_NAME_OPTION_VALUE) {
+      findElement(prefix + "-input").value = "";
+      showPickerNew(prefix, true);
+      findElement(prefix + "-input").focus();
+      return;
+    }
+    selectElement.className = selectElement.value === "" ? "is-empty" : "";
+    onChange();
+  });
+  findElement(prefix + "-input").addEventListener("change", onChange);
+  findElement(prefix + "-list-button").addEventListener("click", function backToWheel() {
+    setPickerValue(prefix, "");
+    onChange();
+  });
+}
+
+/* ------------------------------ LOG SCREEN ------------------------------ */
+
+/**
+ * Builds the grade buttons, from VB to V17.
  * @returns {void}
  */
 function buildGradeButtons() {
   var gradeRow = findElement("grade-buttons");
   removeAllChildren(gradeRow);
-  for (var gradeValue = LOWEST_GRADE_VALUE; gradeValue <= HIGHEST_GRADE_VALUE; gradeValue += 1) {
+  for (var gradeValue = MINIMUM_GRADE_VALUE; gradeValue <= MAXIMUM_GRADE_VALUE; gradeValue += 1) {
     var gradeButton = document.createElement("button");
     gradeButton.type = "button";
     gradeButton.className = "chip";
-    gradeButton.textContent = "V" + gradeValue;
+    gradeButton.textContent = makeGradeText(gradeValue);
     gradeButton.dataset.gradeValue = String(gradeValue);
     gradeButton.setAttribute("aria-pressed", "false");
     gradeButton.addEventListener("click", makeGradeHandler(gradeValue));
@@ -2784,8 +3777,7 @@ function buildGradeButtons() {
 }
 
 /**
- * Builds the handler for one grade button. A named builder keeps the grade of
- * each button separate from the loop counter.
+ * Builds the handler for one grade button.
  * @param {number} gradeValue - The grade of that button.
  * @returns {Function} The handler.
  */
@@ -2797,12 +3789,12 @@ function makeGradeHandler(gradeValue) {
 
 /**
  * Marks one grade button as selected.
- * @param {number} gradeValue - A number from 0 to 17.
+ * @param {number} gradeValue - A number from -1 (VB) to 17.
  * @returns {void}
  */
 function setGradeValue(gradeValue) {
-  if (gradeValue < LOWEST_GRADE_VALUE || gradeValue > HIGHEST_GRADE_VALUE) {
-    throw new Error("setGradeValue got " + gradeValue + ". The range is 0 to 17.");
+  if (gradeValue < MINIMUM_GRADE_VALUE || gradeValue > MAXIMUM_GRADE_VALUE) {
+    throw new Error("setGradeValue got " + gradeValue + ". The range is VB to V17.");
   }
   formState.gradeValue = gradeValue;
   var gradeButtons = document.querySelectorAll("#grade-buttons .chip");
@@ -2824,8 +3816,7 @@ function setSendChoice(isSend) {
 }
 
 /**
- * Marks the Outdoor choice or the Indoor choice. An indoor gym problem has no
- * position, so the app hides the location row for it.
+ * Marks the Outdoor choice or the Indoor choice.
  * @param {boolean} isIndoor - True for an indoor gym.
  * @returns {void}
  */
@@ -2837,9 +3828,7 @@ function setPlaceChoice(isIndoor) {
 }
 
 /**
- * Shows the location row and the coordinate block only when they apply. An
- * indoor climb has no position at all. An outdoor climb shows the boxes only
- * while the switch is on.
+ * Shows the location row and the coordinate block only when they apply.
  * @returns {void}
  */
 function drawLocationVisibility() {
@@ -2861,8 +3850,8 @@ function isLocationOn() {
 }
 
 /**
- * Turns the location switch on or off. Off is the safe state: a climb saved
- * with the switch off never gets coordinates. The switch stays between visits.
+ * Turns the location switch on or off. Off is the safe state and it stays
+ * between visits.
  * @param {boolean} isOn - True to save coordinates with each climb.
  * @returns {void}
  */
@@ -2875,100 +3864,113 @@ function setLocationOn(isOn) {
 }
 
 /**
- * Puts a set of names into one datalist element.
- * @param {string} listElementId - The identifier of the datalist.
- * @param {Array} names - The names to offer.
- * @returns {void}
+ * Reads the three place names from the pickers of one screen.
+ * @param {Array} prefixes - The three picker prefixes, locale first.
+ * @returns {object} localeName, areaName, and boulderName.
  */
-function fillNameList(listElementId, names) {
-  var listElement = findElement(listElementId);
-  removeAllChildren(listElement);
-  for (var nameIndex = 0; nameIndex < names.length; nameIndex += 1) {
-    var optionElement = document.createElement("option");
-    optionElement.value = names[nameIndex];
-    listElement.appendChild(optionElement);
-  }
+function readPlaceFromPickers(prefixes) {
+  return {
+    localeName: readPickerValue(prefixes[0]),
+    areaName: readPickerValue(prefixes[1]),
+    boulderName: readPickerValue(prefixes[2])
+  };
 }
 
 /**
- * Draws the buttons for the climbs that you already logged on this boulder.
- * A tap fills the name and the grade, so that a repeat is two taps.
- * @param {Array} climbs - Validated climb records.
+ * Reads the place from the Log screen.
+ * @returns {object} localeName, areaName, and boulderName.
+ */
+function readPlace() {
+  return readPlaceFromPickers(LOG_PLACE_PREFIXES);
+}
+
+/**
+ * Reports whether all three place names are filled.
+ * @param {object} place - localeName, areaName, and boulderName.
+ * @returns {boolean} True when none of the three is empty.
+ */
+function isPlaceComplete(place) {
+  return place.localeName.length > 0 && place.areaName.length > 0 && place.boulderName.length > 0;
+}
+
+/**
+ * Fills the four pickers of one screen from the records. The areas follow
+ * the locale, the boulders follow the area, the climbs follow the boulder.
+ * @param {Array} prefixes - The three place prefixes.
+ * @param {string} climbPrefix - The climb picker prefix.
+ * @param {Array} records - Climb or duel records with the place fields.
  * @returns {void}
  */
-function drawKnownClimbs(climbs) {
-  var knownClimbs = listKnownClimbs(climbs, readPlace());
-  var buttonRow = findElement("known-climb-buttons");
-  removeAllChildren(buttonRow);
-  findElement("known-climb-block").hidden = knownClimbs.length === 0;
-
+function fillPlacePickers(prefixes, climbPrefix, records) {
+  var place = readPlaceFromPickers(prefixes);
+  fillPicker(prefixes[0], listPlaceNames(records, "", null), "Locale", null);
+  fillPicker(prefixes[1], listPlaceNames(records, place.localeName, null), "Area", null);
+  fillPicker(prefixes[2], listPlaceNames(records, place.localeName, place.areaName), "Boulder", null);
+  var knownClimbs = listKnownClimbs(records, place);
+  var gradeByName = {};
+  var climbNames = [];
   for (var climbIndex = 0; climbIndex < knownClimbs.length; climbIndex += 1) {
-    buttonRow.appendChild(makeKnownClimbButton(knownClimbs[climbIndex]));
+    climbNames.push(knownClimbs[climbIndex].climbName);
+    gradeByName[knownClimbs[climbIndex].climbName] = makeGradeText(knownClimbs[climbIndex].gradeValue);
   }
+  fillPicker(climbPrefix, climbNames, climbPrefix === "log-climb" ? "Unnamed" : "Climb", gradeByName);
 }
 
 /**
- * Builds one button for a climb that you logged on this boulder before.
- * @param {object} knownClimb - The climb name and its last grade.
- * @returns {Element} The button.
- */
-function makeKnownClimbButton(knownClimb) {
-  var climbButton = makeElement("button", "chip chip-climb", knownClimb.climbName);
-  climbButton.type = "button";
-  climbButton.appendChild(
-    makeElement("span", "chip-grade", makeGradeText(knownClimb.gradeValue)));
-  climbButton.addEventListener("click", function fillThisClimb() {
-    findElement("climb-name-input").value = knownClimb.climbName;
-    setGradeValue(knownClimb.gradeValue);
-  });
-  return climbButton;
-}
-
-/**
- * Reports whether the log survives a restart, and how many climbs it holds.
- * @param {number} climbCount - The count of climbs in the log.
+ * Empties the pickers below a level of the place tree. A new locale means
+ * the old area no longer applies, and so on down.
+ * @param {Array} prefixes - The three place prefixes.
+ * @param {string} climbPrefix - The climb picker prefix.
+ * @param {number} fromLevel - 1 to clear from the area, 2 from the boulder,
+ *   3 to clear the climb only.
  * @returns {void}
  */
-function drawStorageStatus(climbCount) {
-  var isPersistent = getStorageIsPersistent();
-  findElement("storage-status").textContent = isPersistent === true
-    ? climbCount + " climbs are on this phone. Export a CSV file after each trip."
-    : climbCount + " climbs are in memory only. They go away when you close the app.";
-  findElement("storage-warning").hidden = isPersistent;
+function clearPickersBelow(prefixes, climbPrefix, fromLevel) {
+  if (fromLevel <= 1) {
+    setPickerValue(prefixes[1], "");
+  }
+  if (fromLevel <= 2) {
+    setPickerValue(prefixes[2], "");
+  }
+  setPickerValue(climbPrefix, "");
 }
 
 /**
- * Draws every screen again from the records on the phone.
- * @returns {void}
+ * Finds the highest level of the place that differs from the last one.
+ * @param {object} lastPlace - The place before the change.
+ * @param {object} newPlace - The place after the change.
+ * @returns {number} 0 for the locale, 1 for the area, 2 for the boulder, or
+ *   3 when nothing changed.
  */
-function refreshScreens() {
-  var climbs = readAllClimbs();
-  var place = readPlace();
-  fillNameList("locale-name-list", listPlaceNames(climbs, "", null));
-  fillNameList("area-name-list", listPlaceNames(climbs, place.localeName, null));
-  fillNameList("boulder-name-list", listPlaceNames(climbs, place.localeName, place.areaName));
-  drawKnownClimbs(climbs);
-  drawClimbList(findElement("climb-list"), climbs, handleRemoveClimb);
-  drawStatistics(climbs);
-  drawStorageStatus(climbs.length);
+function findChangedLevel(lastPlace, newPlace) {
+  if (lastPlace.localeName !== newPlace.localeName) {
+    return 0;
+  }
+  if (lastPlace.areaName !== newPlace.areaName) {
+    return 1;
+  }
+  if (lastPlace.boulderName !== newPlace.boulderName) {
+    return 2;
+  }
+  return 3;
 }
 
 /**
- * Answers a change of the locale, the area, or the boulder. It remembers the
- * names, and when the location switch is on it fills the position of a
- * boulder that you pinned before, or asks for one GPS fix for a new boulder.
+ * Answers a change of the locale, the area, or the boulder on the Log
+ * screen. It remembers the names, empties the pickers below the change, and
+ * when the location switch is on it finds the position of the boulder.
  * @returns {void}
  */
 function handlePlaceChange() {
   var place = readPlace();
   var lastSettings = readSettings();
-  var isSameBoulder = lastSettings.localeName === place.localeName &&
-    lastSettings.areaName === place.areaName &&
-    lastSettings.boulderName === place.boulderName;
+  var changedLevel = findChangedLevel(lastSettings, place);
+  if (changedLevel < 3) {
+    clearPickersBelow(LOG_PLACE_PREFIXES, "log-climb", changedLevel + 1);
+  }
   writeSettings(place);
   refreshScreens();
-
-  if (isSameBoulder === true) {
+  if (changedLevel === 3) {
     return;
   }
   /* A different rock has a different position. The old one must go, or the
@@ -2985,8 +3987,7 @@ function handlePlaceChange() {
  * @returns {void}
  */
 function findBoulderPosition(place) {
-  if (isLocationOn() === false || formState.isIndoor === true ||
-      isPlaceComplete(place) === false) {
+  if (isLocationOn() === false || formState.isIndoor === true || isPlaceComplete(place) === false) {
     return;
   }
   var knownCoordinates = findBoulderCoordinates(readAllClimbs(), place);
@@ -2995,15 +3996,11 @@ function findBoulderPosition(place) {
     writeCoordinates(knownCoordinates.latitudeDegrees, knownCoordinates.longitudeDegrees);
     return;
   }
-  /* One fix for each new boulder. Every climb on that rock uses it, so the
-     app never asks the GPS again until you move to another boulder. */
   pinLocationFromGps(showMessage);
 }
 
 /**
- * Answers a tap on the location switch. A turn to on looks for the position
- * of the current boulder at once, so that the summary is never blank for
- * a rock that you pinned before.
+ * Answers a tap on the location switch.
  * @returns {void}
  */
 function handleLocationToggle() {
@@ -3015,60 +4012,169 @@ function handleLocationToggle() {
 }
 
 /**
- * Saves the climb that the form holds.
+ * Answers a choice on the climb picker. A known climb brings its last grade.
  * @returns {void}
  */
-function handleSaveClimb() {
+function handleClimbPick() {
+  var climbName = readPickerValue("log-climb");
+  var knownClimbs = listKnownClimbs(readAllClimbs(), readPlace());
+  for (var climbIndex = 0; climbIndex < knownClimbs.length; climbIndex += 1) {
+    if (knownClimbs[climbIndex].climbName === climbName) {
+      setGradeValue(knownClimbs[climbIndex].gradeValue);
+    }
+  }
+}
+
+/**
+ * Makes the name for a climb with no name: the grade, then a number when
+ * the boulder already has one. "Unnamed V4", then "Unnamed V4 (2)".
+ * @param {object} place - The boulder.
+ * @param {number} gradeValue - The grade.
+ * @returns {string} The name.
+ */
+function makeUnnamedClimbName(place, gradeValue) {
+  var baseName = "Unnamed " + makeGradeText(gradeValue);
+  var existingCount = countUnnamedClimbs(readAllClimbs(), place, baseName);
+  return existingCount === 0 ? baseName : baseName + " (" + (existingCount + 1) + ")";
+}
+
+/**
+ * Reads the climb under edit, or null when the form is for a new climb.
+ * @returns {object|null} The climb record.
+ */
+function readEditingClimb() {
+  if (formState.editingIdentifier.length === 0) {
+    return null;
+  }
+  var climbs = readAllClimbs();
+  for (var climbIndex = 0; climbIndex < climbs.length; climbIndex += 1) {
+    if (climbs[climbIndex].identifier === formState.editingIdentifier) {
+      return climbs[climbIndex];
+    }
+  }
+  return null;
+}
+
+/**
+ * Builds the raw climb record from the Log screen.
+ * @returns {object} Untrusted values, ready for validation. Or null with a
+ *   message shown when the position is not readable.
+ */
+function readClimbForm() {
+  var editingClimb = readEditingClimb();
   var savesCoordinates = isLocationOn() === true && formState.isIndoor === false;
   var coordinateResult = readCoordinates();
   if (savesCoordinates === true && coordinateResult.errorMessage !== null) {
     showMessage(coordinateResult.errorMessage, true);
-    return;
+    return null;
   }
+  /* A climb under edit keeps its saved position when the switch is off, so
+     that an edit of the grade never strips the coordinates. */
+  var keptCoordinates = savesCoordinates === true
+    ? { latitudeDegrees: coordinateResult.latitudeDegrees,
+        longitudeDegrees: coordinateResult.longitudeDegrees, accuracyMeters: lastAccuracyMeters }
+    : (editingClimb !== null && formState.isIndoor === false
+        ? editingClimb : { latitudeDegrees: null, longitudeDegrees: null, accuracyMeters: null });
   var place = readPlace();
+  var climbName = readPickerValue("log-climb");
   var nowIso = new Date().toISOString();
-  var rawClimb = {
-    identifier: makeClimbIdentifier(nowIso, Math.random()),
-    climbedAtIso: nowIso,
+  return {
+    climbedAtIso: makeIsoFromDateBox(findElement("date-input").value,
+      editingClimb === null ? "" : editingClimb.climbedAtIso),
     modifiedAtIso: nowIso,
     isDeleted: false,
     localeName: place.localeName,
     areaName: place.areaName,
     boulderName: place.boulderName,
-    climbName: findElement("climb-name-input").value,
+    climbName: climbName.length > 0 ? climbName
+      : (editingClimb !== null ? editingClimb.climbName : makeUnnamedClimbName(place, formState.gradeValue)),
     gradeValue: formState.gradeValue,
     isSend: formState.isSend,
     isIndoor: formState.isIndoor,
     notes: findElement("notes-input").value,
-    latitudeDegrees: savesCoordinates === true ? coordinateResult.latitudeDegrees : null,
-    longitudeDegrees: savesCoordinates === true ? coordinateResult.longitudeDegrees : null,
-    accuracyMeters: savesCoordinates === true ? lastAccuracyMeters : null
+    latitudeDegrees: keptCoordinates.latitudeDegrees,
+    longitudeDegrees: keptCoordinates.longitudeDegrees,
+    accuracyMeters: keptCoordinates.accuracyMeters
   };
+}
 
+/**
+ * Saves the climb that the form holds, as a new record or as an update.
+ * @returns {void}
+ */
+function handleSaveClimb() {
+  var rawClimb = readClimbForm();
+  if (rawClimb === null) {
+    return;
+  }
   try {
-    var result = addClimb(rawClimb);
+    var isEdit = formState.editingIdentifier.length > 0;
+    var result = isEdit === true
+      ? updateClimb(formState.editingIdentifier, rawClimb)
+      : addClimb(Object.assign({ identifier: makeClimbIdentifier(rawClimb.modifiedAtIso, Math.random()) }, rawClimb));
     if (result.climb === null) {
       showMessage(result.errorMessage, true);
       return;
     }
-    clearAfterSave();
+    stopEditing();
     refreshScreens();
-    showMessage("Saved " + makeGradeText(result.climb.gradeValue) + " " +
-      result.climb.climbName + ".", false);
+    showMessage((isEdit === true ? "Updated " : "Saved ") + makeGradeText(result.climb.gradeValue) +
+      " " + result.climb.climbName + ".", false);
   } catch (saveError) {
     showMessage(saveError.message, true);
   }
 }
 
 /**
- * Empties the climb name and the notes. The place, the grade, and the
- * position stay, because the next climb is usually on the same rock.
+ * Opens one climb in the form so that it can be changed.
+ * @param {string} identifier - The identifier of the climb.
  * @returns {void}
  */
-function clearAfterSave() {
-  findElement("climb-name-input").value = "";
+function startEditing(identifier) {
+  formState.editingIdentifier = identifier;
+  var climb = readEditingClimb();
+  if (climb === null) {
+    formState.editingIdentifier = "";
+    showMessage("That climb is not in the log.", true);
+    return;
+  }
+  showScreen("log");
+  setPickerValue("log-locale", climb.localeName);
+  fillPlacePickers(LOG_PLACE_PREFIXES, "log-climb", readAllClimbs());
+  setPickerValue("log-area", climb.areaName);
+  fillPlacePickers(LOG_PLACE_PREFIXES, "log-climb", readAllClimbs());
+  setPickerValue("log-boulder", climb.boulderName);
+  fillPlacePickers(LOG_PLACE_PREFIXES, "log-climb", readAllClimbs());
+  setPickerValue("log-climb", climb.climbName);
+  writeSettings({ localeName: climb.localeName, areaName: climb.areaName, boulderName: climb.boulderName });
+  setGradeValue(climb.gradeValue);
+  setSendChoice(climb.isSend);
+  setPlaceChoice(climb.isIndoor);
+  findElement("notes-input").value = climb.notes;
+  findElement("date-input").value = readDateOnly(climb.climbedAtIso);
+  if (climb.latitudeDegrees !== null) {
+    lastAccuracyMeters = climb.accuracyMeters;
+    writeCoordinates(climb.latitudeDegrees, climb.longitudeDegrees);
+  } else {
+    writeCoordinates(null, null);
+  }
+  findElement("save-climb-button").textContent = "Update climb";
+  findElement("cancel-edit-button").hidden = false;
+}
+
+/**
+ * Leaves edit mode and empties the fields that change from climb to climb.
+ * The place, the grade, and the position stay.
+ * @returns {void}
+ */
+function stopEditing() {
+  formState.editingIdentifier = "";
+  setPickerValue("log-climb", "");
   findElement("notes-input").value = "";
+  findElement("date-input").value = readTodayDateOnly();
   setSendChoice(true);
+  findElement("save-climb-button").textContent = "Save climb";
+  findElement("cancel-edit-button").hidden = true;
 }
 
 /**
@@ -3085,6 +4191,9 @@ function handleRemoveClimb(identifier) {
       showMessage("That climb is not in the log.", true);
       return;
     }
+    if (formState.editingIdentifier === identifier) {
+      stopEditing();
+    }
     refreshScreens();
     showMessage("Climb removed.", false);
   } catch (removeError) {
@@ -3093,55 +4202,287 @@ function handleRemoveClimb(identifier) {
 }
 
 /**
- * Writes the whole log to a CSV file and starts the download. The removed
- * climbs go into the file too, so that a computer learns about them.
+ * Opens the Log screen on a climb from the Browse tree.
+ * @param {object} place - The boulder.
+ * @param {object} leaf - The climb summary from the tree.
  * @returns {void}
  */
-function handleExport() {
-  var climbs = readAllClimbsWithRemoved();
-  if (climbs.length === 0) {
-    showMessage("The log is empty. There is nothing to export.", true);
+function handlePickFromTree(place, leaf) {
+  stopEditing();
+  showScreen("log");
+  setPickerValue("log-locale", place.localeName);
+  fillPlacePickers(LOG_PLACE_PREFIXES, "log-climb", readAllClimbs());
+  setPickerValue("log-area", place.areaName);
+  fillPlacePickers(LOG_PLACE_PREFIXES, "log-climb", readAllClimbs());
+  setPickerValue("log-boulder", place.boulderName);
+  fillPlacePickers(LOG_PLACE_PREFIXES, "log-climb", readAllClimbs());
+  setPickerValue("log-climb", leaf.name);
+  setGradeValue(leaf.gradeValue);
+  handlePlaceChange();
+}
+
+/* ------------------------------ DUEL SCREEN ------------------------------ */
+
+/**
+ * Builds the grade wheel of the Duel screen.
+ * @returns {void}
+ */
+function buildDuelGradeSelect() {
+  var selectElement = findElement("duel-grade-select");
+  removeAllChildren(selectElement);
+  for (var gradeValue = MINIMUM_GRADE_VALUE; gradeValue <= MAXIMUM_GRADE_VALUE; gradeValue += 1) {
+    selectElement.appendChild(makeOption(String(gradeValue), makeGradeText(gradeValue)));
+  }
+  selectElement.value = "0";
+}
+
+/**
+ * Reads climbs and duels together, so that the duel pickers offer every
+ * place and climb that either log has.
+ * @returns {Array} Records with the place and climb fields.
+ */
+function readPlaceRecords() {
+  return readAllClimbs().concat(readAllDuels());
+}
+
+/**
+ * Builds one row of the people in a duel.
+ * @param {string} personName - The name to select, or empty.
+ * @param {Array} knownNames - Every name the duel log has.
+ * @returns {Element} The row.
+ */
+function makePersonRow(personName, knownNames) {
+  var row = makeElement("div", "duel-person-row", "");
+  var slot = makeElement("div", "picker-slot", "");
+  var selectElement = document.createElement("select");
+  selectElement.className = "person-select";
+  selectElement.setAttribute("aria-label", "Person");
+  selectElement.appendChild(makeOption("", "Person"));
+  for (var nameIndex = 0; nameIndex < knownNames.length; nameIndex += 1) {
+    selectElement.appendChild(makeOption(knownNames[nameIndex], knownNames[nameIndex]));
+  }
+  selectElement.appendChild(makeOption(NEW_NAME_OPTION_VALUE, "New\u2026"));
+  var nameInput = document.createElement("input");
+  nameInput.type = "search";
+  nameInput.className = "person-input";
+  nameInput.placeholder = "Name";
+  nameInput.setAttribute("autocapitalize", "words");
+  nameInput.hidden = true;
+  if (knownNames.indexOf(personName) >= 0) {
+    selectElement.value = personName;
+  } else if (personName.length > 0) {
+    nameInput.value = personName;
+    nameInput.hidden = false;
+    selectElement.hidden = true;
+  }
+  selectElement.addEventListener("change", function handleWheel() {
+    if (selectElement.value === NEW_NAME_OPTION_VALUE) {
+      selectElement.hidden = true;
+      nameInput.hidden = false;
+      nameInput.focus();
+    }
+  });
+  slot.appendChild(selectElement);
+  slot.appendChild(nameInput);
+  row.appendChild(slot);
+
+  var attemptsInput = document.createElement("input");
+  attemptsInput.type = "number";
+  attemptsInput.className = "person-attempts";
+  attemptsInput.inputMode = "numeric";
+  attemptsInput.min = "0";
+  attemptsInput.max = "999";
+  attemptsInput.placeholder = "Attempts";
+  attemptsInput.setAttribute("aria-label", "Attempts");
+  row.appendChild(attemptsInput);
+
+  var removeButton = makeElement("button", "remove-button", "\u00d7");
+  removeButton.type = "button";
+  removeButton.setAttribute("aria-label", "Remove this person");
+  removeButton.addEventListener("click", function removeRow() {
+    row.parentNode.removeChild(row);
+  });
+  row.appendChild(removeButton);
+  return row;
+}
+
+/**
+ * Reads the people and their attempts from the Duel screen.
+ * @returns {Array} One entry for each row: personName and attemptCount.
+ */
+function readDuelEntries() {
+  var rows = document.querySelectorAll("#duel-people .duel-person-row");
+  var entries = [];
+  for (var rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+    var selectElement = rows[rowIndex].querySelector(".person-select");
+    var nameInput = rows[rowIndex].querySelector(".person-input");
+    var personName = nameInput.hidden === false ? nameInput.value.trim() : selectElement.value;
+    entries.push({
+      personName: personName === NEW_NAME_OPTION_VALUE ? "" : personName,
+      attemptCount: rows[rowIndex].querySelector(".person-attempts").value.trim()
+    });
+  }
+  return entries;
+}
+
+/**
+ * Draws the people rows from the names used last time.
+ * @param {Array} personNames - The names to show, in order.
+ * @returns {void}
+ */
+function drawPersonRows(personNames) {
+  var container = findElement("duel-people");
+  removeAllChildren(container);
+  var knownNames = listDuelPeople(readAllDuels());
+  for (var nameIndex = 0; nameIndex < personNames.length; nameIndex += 1) {
+    container.appendChild(makePersonRow(personNames[nameIndex], knownNames));
+  }
+  if (personNames.length < 2) {
+    container.appendChild(makePersonRow("", knownNames));
+  }
+}
+
+/**
+ * Answers a choice on the duel climb picker. A known climb brings its grade.
+ * @returns {void}
+ */
+function handleDuelClimbPick() {
+  var climbName = readPickerValue("duel-climb");
+  var knownClimbs = listKnownClimbs(readPlaceRecords(), readPlaceFromPickers(DUEL_PLACE_PREFIXES));
+  for (var climbIndex = 0; climbIndex < knownClimbs.length; climbIndex += 1) {
+    if (knownClimbs[climbIndex].climbName === climbName) {
+      findElement("duel-grade-select").value = String(knownClimbs[climbIndex].gradeValue);
+    }
+  }
+}
+
+/**
+ * Answers a change of the place on the Duel screen.
+ * @returns {void}
+ */
+function handleDuelPlaceChange() {
+  var place = readPlaceFromPickers(DUEL_PLACE_PREFIXES);
+  var lastPlace = readSettings().duelPlace || { localeName: "", areaName: "", boulderName: "" };
+  var changedLevel = findChangedLevel(lastPlace, place);
+  if (changedLevel < 3) {
+    clearPickersBelow(DUEL_PLACE_PREFIXES, "duel-climb", changedLevel + 1);
+  }
+  writeSettings({ duelPlace: place });
+  fillPlacePickers(DUEL_PLACE_PREFIXES, "duel-climb", readPlaceRecords());
+}
+
+/**
+ * Saves the duel that the form holds.
+ * @returns {void}
+ */
+function handleSaveDuel() {
+  var place = readPlaceFromPickers(DUEL_PLACE_PREFIXES);
+  var nowIso = new Date().toISOString();
+  var entries = readDuelEntries();
+  var rawDuel = {
+    dueledAtIso: makeIsoFromDateBox(findElement("duel-date-input").value, ""),
+    modifiedAtIso: nowIso,
+    isDeleted: false,
+    localeName: place.localeName,
+    areaName: place.areaName,
+    boulderName: place.boulderName,
+    climbName: readPickerValue("duel-climb"),
+    gradeValue: Number(findElement("duel-grade-select").value),
+    notes: findElement("duel-notes-input").value,
+    entries: entries
+  };
+  try {
+    var result = addDuel(rawDuel);
+    if (result.duel === null) {
+      showMessage(result.errorMessage, true);
+      return;
+    }
+    writeSettings({ duelPeople: result.duel.entries.map(function readName(entry) { return entry.personName; }) });
+    findElement("duel-notes-input").value = "";
+    setPickerValue("duel-climb", "");
+    refreshScreens();
+    showMessage("Saved the duel on " + result.duel.climbName + ".", false);
+  } catch (saveError) {
+    showMessage(saveError.message, true);
+  }
+}
+
+/**
+ * Marks one duel as removed, after the person agrees.
+ * @param {string} identifier - The identifier of the duel.
+ * @returns {void}
+ */
+function handleRemoveDuel(identifier) {
+  if (window.confirm("Remove this duel? You cannot undo this.") === false) {
     return;
   }
   try {
-    var fileName = "climb-log-" + new Date().toISOString().slice(0, 10) + ".csv";
-    var fileBlob = new Blob([makeCsvText(climbs)], { type: "text/csv;charset=utf-8" });
-    var fileAddress = URL.createObjectURL(fileBlob);
-    var downloadLink = document.createElement("a");
+    removeDuel(identifier, new Date().toISOString());
+    refreshScreens();
+    showMessage("Duel removed.", false);
+  } catch (removeError) {
+    showMessage(removeError.message, true);
+  }
+}
 
-    downloadLink.href = fileAddress;
-    downloadLink.download = fileName;
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
+/* ------------------------------ DATA SCREEN ------------------------------ */
 
-    window.setTimeout(function releaseFileAddress() {
-      URL.revokeObjectURL(fileAddress);
-    }, FILE_ADDRESS_RELEASE_MILLISECONDS);
-    showMessage("Exported " + climbs.length + " rows to " + fileName + ".", false);
+/**
+ * Starts the download of one text file.
+ * @param {string} fileName - The name the file gets.
+ * @param {string} fileText - The content.
+ * @returns {void}
+ */
+function downloadTextFile(fileName, fileText) {
+  var fileBlob = new Blob([fileText], { type: "text/csv;charset=utf-8" });
+  var fileAddress = URL.createObjectURL(fileBlob);
+  var downloadLink = document.createElement("a");
+  downloadLink.href = fileAddress;
+  downloadLink.download = fileName;
+  document.body.appendChild(downloadLink);
+  downloadLink.click();
+  document.body.removeChild(downloadLink);
+  window.setTimeout(function releaseFileAddress() {
+    URL.revokeObjectURL(fileAddress);
+  }, FILE_ADDRESS_RELEASE_MILLISECONDS);
+}
+
+/**
+ * Writes the climb log to a CSV file. Removed climbs go in as marks.
+ * @returns {void}
+ */
+function handleExportClimbs() {
+  var climbs = readAllClimbsWithRemoved();
+  if (climbs.length === 0) {
+    showMessage("The climb log is empty. There is nothing to export.", true);
+    return;
+  }
+  try {
+    var fileName = "climb-log-" + readTodayDateOnly() + ".csv";
+    downloadTextFile(fileName, makeCsvText(climbs));
+    showMessage("Exported " + climbs.length + " climb rows to " + fileName + ".", false);
   } catch (exportError) {
     showMessage("The export failed: " + exportError.message, true);
   }
 }
 
 /**
- * Reads the selected CSV file and joins it with the log.
+ * Writes the duel log to a CSV file.
  * @returns {void}
  */
-function handleImportMerge() {
-  readImportFile(false);
-}
-
-/**
- * Reads the selected CSV file and replaces the whole log with it.
- * @returns {void}
- */
-function handleImportReplace() {
-  if (window.confirm("Replace every climb in the log with the file? You cannot undo this.")
-      === false) {
+function handleExportDuels() {
+  var duels = readAllDuelsWithRemoved();
+  if (duels.length === 0) {
+    showMessage("The duel log is empty. There is nothing to export.", true);
     return;
   }
-  readImportFile(true);
+  try {
+    var fileName = "duel-log-" + readTodayDateOnly() + ".csv";
+    downloadTextFile(fileName, makeDuelCsvText(duels));
+    showMessage("Exported " + duels.length + " duels to " + fileName + ".", false);
+  } catch (exportError) {
+    showMessage("The export failed: " + exportError.message, true);
+  }
 }
 
 /**
@@ -3155,6 +4496,9 @@ function readImportFile(isReplace) {
     showMessage("Select a CSV file first.", true);
     return;
   }
+  if (isReplace === true && window.confirm("Replace the log with the file? You cannot undo this.") === false) {
+    return;
+  }
   var fileReader = new FileReader();
   fileReader.onerror = function reportReadError() {
     showMessage("The phone could not read that file. Try another copy.", true);
@@ -3166,23 +4510,32 @@ function readImportFile(isReplace) {
 }
 
 /**
- * Puts the text of a CSV file into the log and reports the result.
+ * Puts the text of a CSV file into the right log. The header row says which
+ * log the file belongs to.
  * @param {string} csvText - The text of the file.
  * @param {boolean} isReplace - True to replace the log, false to join it.
  * @returns {void}
  */
 function applyImportedText(csvText, isReplace) {
   try {
-    var importResult = readCsvText(csvText);
+    var isDuelFile = csvText.slice(0, 400).toLowerCase().indexOf("duel_identifier") >= 0;
+    var importResult = isDuelFile === true ? readDuelCsvText(csvText) : readCsvText(csvText);
     if (importResult.errorMessage !== null) {
       showMessage(importResult.errorMessage, true);
       return;
     }
-    var climbsToKeep = isReplace === true ? [] : readAllClimbsWithRemoved();
-    replaceAllClimbs(mergeClimbs(climbsToKeep, importResult.climbs));
+    var readCount = 0;
+    if (isDuelFile === true) {
+      writeAllDuels(mergeDuels(isReplace === true ? [] : readAllDuelsWithRemoved(), importResult.duels));
+      readCount = importResult.duels.length;
+    } else {
+      replaceAllClimbs(mergeClimbs(isReplace === true ? [] : readAllClimbsWithRemoved(), importResult.climbs));
+      readCount = importResult.climbs.length;
+    }
     refreshScreens();
-
-    var messageText = makeImportMessage(importResult, readAllClimbs().length);
+    var messageText = "Read " + readCount + (isDuelFile === true ? " duels." : " climbs.") +
+      (importResult.rejectedRows.length === 0 ? "" : " " + importResult.rejectedRows.length +
+        " failed. Row " + importResult.rejectedRows[0].rowNumber + ": " + importResult.rejectedRows[0].errorMessage);
     findElement("import-result").textContent = messageText;
     showMessage(messageText, false);
   } catch (importError) {
@@ -3190,35 +4543,131 @@ function applyImportedText(csvText, isReplace) {
   }
 }
 
+/* ------------------------------- ALL SCREENS ------------------------------ */
+
 /**
- * Writes the message that reports the result of an import.
- * @param {object} importResult - The result from readCsvText.
- * @param {number} logSize - The count of climbs that the log now shows.
- * @returns {string} The message.
+ * Reports whether the log survives a restart, and how much it holds.
+ * @param {number} climbCount - The count of climbs in the log.
+ * @param {number} duelCount - The count of duels.
+ * @returns {void}
  */
-function makeImportMessage(importResult, logSize) {
-  var baseText = "Read " + importResult.climbs.length + " rows. The log now holds " +
-    logSize + " climbs.";
-  if (importResult.rejectedRows.length === 0) {
-    return baseText;
-  }
-  return baseText + " " + importResult.rejectedRows.length + " rows failed. Row " +
-    importResult.rejectedRows[0].rowNumber + ": " +
-    importResult.rejectedRows[0].errorMessage;
+function drawStorageStatus(climbCount, duelCount) {
+  var isPersistent = getStorageIsPersistent();
+  findElement("storage-status").textContent = isPersistent === true
+    ? climbCount + " climbs and " + duelCount + " duels are on this phone. Export after each trip."
+    : climbCount + " climbs are in memory only. They go away when you close the app.";
+  findElement("storage-warning").hidden = isPersistent;
 }
 
 /**
- * Fills the position of the boulder that was open when the app closed. The
- * app does not ask the GPS on start, so that an open of the app in the car
- * does not pin the car park to a boulder.
+ * Draws every screen again from the records on the phone.
+ * @returns {void}
+ */
+function refreshScreens() {
+  var climbs = readAllClimbs();
+  var duels = readAllDuels();
+  fillPlacePickers(LOG_PLACE_PREFIXES, "log-climb", climbs);
+  fillPlacePickers(DUEL_PLACE_PREFIXES, "duel-climb", climbs.concat(duels));
+  drawClimbList(findElement("climb-list"), climbs, handleRemoveClimb, startEditing);
+  drawPlaceTree(findElement("place-tree"), climbs, handlePickFromTree);
+  drawDuelRecords(duels, handleRemoveDuel);
+  drawStatistics(climbs);
+  drawStorageStatus(climbs.length, duels.length);
+}
+
+/**
+ * Puts the saved place into the pickers of one screen, level by level, so
+ * that each lower list is built for the level above it.
+ * @param {Array} prefixes - The three place prefixes.
+ * @param {string} climbPrefix - The climb picker prefix.
+ * @param {object} place - localeName, areaName, and boulderName.
+ * @param {Array} records - The records to build the lists from.
+ * @returns {void}
+ */
+function restorePlacePickers(prefixes, climbPrefix, place, records) {
+  setPickerValue(prefixes[0], place.localeName);
+  fillPlacePickers(prefixes, climbPrefix, records);
+  setPickerValue(prefixes[1], place.areaName);
+  fillPlacePickers(prefixes, climbPrefix, records);
+  setPickerValue(prefixes[2], place.boulderName);
+  fillPlacePickers(prefixes, climbPrefix, records);
+}
+
+/**
+ * Connects the buttons and the pickers of the Log screen.
+ * @returns {void}
+ */
+function connectLogScreen() {
+  findElement("send-yes-button").addEventListener("click", function chooseSend() { setSendChoice(true); });
+  findElement("send-no-button").addEventListener("click", function chooseNoSend() { setSendChoice(false); });
+  findElement("outdoor-button").addEventListener("click", function chooseOutdoor() { setPlaceChoice(false); });
+  findElement("indoor-button").addEventListener("click", function chooseIndoor() { setPlaceChoice(true); });
+  for (var prefixIndex = 0; prefixIndex < LOG_PLACE_PREFIXES.length; prefixIndex += 1) {
+    connectPicker(LOG_PLACE_PREFIXES[prefixIndex], handlePlaceChange);
+  }
+  connectPicker("log-climb", handleClimbPick);
+  findElement("location-toggle-button").addEventListener("click", handleLocationToggle);
+  findElement("save-climb-button").addEventListener("click", handleSaveClimb);
+  findElement("cancel-edit-button").addEventListener("click", stopEditing);
+}
+
+/**
+ * Connects the buttons and the pickers of the Duel screen.
+ * @returns {void}
+ */
+function connectDuelScreen() {
+  for (var prefixIndex = 0; prefixIndex < DUEL_PLACE_PREFIXES.length; prefixIndex += 1) {
+    connectPicker(DUEL_PLACE_PREFIXES[prefixIndex], handleDuelPlaceChange);
+  }
+  connectPicker("duel-climb", handleDuelClimbPick);
+  findElement("duel-add-person-button").addEventListener("click", function addRow() {
+    findElement("duel-people").appendChild(makePersonRow("", listDuelPeople(readAllDuels())));
+  });
+  findElement("save-duel-button").addEventListener("click", handleSaveDuel);
+}
+
+/**
+ * Connects every control, restores the saved state, and draws the screen.
+ * @returns {void}
+ */
+function start() {
+  storageIsPersistent = testStorageIsPersistent();
+  var settings = readSettings();
+  buildGradeButtons();
+  buildDuelGradeSelect();
+  setGradeValue(0);
+  setSendChoice(true);
+  setPlaceChoice(false);
+  connectCoordinateControls(showMessage);
+  connectLogScreen();
+  connectDuelScreen();
+  findElement("export-button").addEventListener("click", handleExportClimbs);
+  findElement("export-duels-button").addEventListener("click", handleExportDuels);
+  findElement("import-add-button").addEventListener("click", function mergeFile() { readImportFile(false); });
+  findElement("import-replace-button").addEventListener("click", function replaceFile() { readImportFile(true); });
+  var tabButtons = document.querySelectorAll(".tab");
+  for (var tabIndex = 0; tabIndex < tabButtons.length; tabIndex += 1) {
+    connectTabButton(tabButtons[tabIndex]);
+  }
+
+  restorePlacePickers(LOG_PLACE_PREFIXES, "log-climb", settings, readAllClimbs());
+  restorePlacePickers(DUEL_PLACE_PREFIXES, "duel-climb",
+    settings.duelPlace || { localeName: "", areaName: "", boulderName: "" }, readPlaceRecords());
+  findElement("date-input").value = readTodayDateOnly();
+  findElement("duel-date-input").value = readTodayDateOnly();
+  drawPersonRows(settings.duelPeople);
+  setLocationOn(settings.isLocationOn === true);
+  restoreBoulderCoordinates();
+  showScreen("log");
+}
+
+/**
+ * Fills the position of the boulder that was open when the app closed.
  * @returns {void}
  */
 function restoreBoulderCoordinates() {
   var settings = readSettings();
-  var place = {
-    localeName: settings.localeName, areaName: settings.areaName,
-    boulderName: settings.boulderName
-  };
+  var place = { localeName: settings.localeName, areaName: settings.areaName, boulderName: settings.boulderName };
   if (isPlaceComplete(place) === false || isLocationOn() === false) {
     return;
   }
@@ -3227,61 +4676,6 @@ function restoreBoulderCoordinates() {
     lastAccuracyMeters = knownCoordinates.accuracyMeters;
     writeCoordinates(knownCoordinates.latitudeDegrees, knownCoordinates.longitudeDegrees);
   }
-}
-
-/**
- * Connects the buttons of the Log screen.
- * @returns {void}
- */
-function connectLogScreen() {
-  findElement("send-yes-button").addEventListener("click", function chooseSend() {
-    setSendChoice(true);
-  });
-  findElement("send-no-button").addEventListener("click", function chooseNoSend() {
-    setSendChoice(false);
-  });
-  findElement("outdoor-button").addEventListener("click", function chooseOutdoor() {
-    setPlaceChoice(false);
-  });
-  findElement("indoor-button").addEventListener("click", function chooseIndoor() {
-    setPlaceChoice(true);
-  });
-  findElement("locale-input").addEventListener("change", handlePlaceChange);
-  findElement("area-input").addEventListener("change", handlePlaceChange);
-  findElement("boulder-input").addEventListener("change", handlePlaceChange);
-  findElement("location-toggle-button").addEventListener("click", handleLocationToggle);
-  findElement("save-climb-button").addEventListener("click", handleSaveClimb);
-}
-
-/**
- * Connects every button and box, then draws the first screen.
- * @returns {void}
- */
-function start() {
-  storageIsPersistent = testStorageIsPersistent();
-  buildGradeButtons();
-  setGradeValue(LOWEST_GRADE_VALUE);
-  setSendChoice(true);
-  setPlaceChoice(false);
-  connectCoordinateControls(showMessage);
-
-  var settings = readSettings();
-  findElement("locale-input").value = settings.localeName;
-  findElement("area-input").value = settings.areaName;
-  findElement("boulder-input").value = settings.boulderName;
-  setLocationOn(settings.isLocationOn === true);
-  restoreBoulderCoordinates();
-
-  connectLogScreen();
-  findElement("export-button").addEventListener("click", handleExport);
-  findElement("import-add-button").addEventListener("click", handleImportMerge);
-  findElement("import-replace-button").addEventListener("click", handleImportReplace);
-
-  var tabButtons = document.querySelectorAll(".tab");
-  for (var tabIndex = 0; tabIndex < tabButtons.length; tabIndex += 1) {
-    connectTabButton(tabButtons[tabIndex]);
-  }
-  showScreen("log");
 }
 
 /**
