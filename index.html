@@ -57,7 +57,7 @@ APPROVED-BY: (self, personal project)    DATE: 2026-09-02
 <title>Climb Log</title>
 <style>
 /* ==========================================================================
-   SECTION 1 OF 8 - STYLES
+   SECTION 1 OF 10 - STYLES
    Plain on purpose. Targets are large because you tap them outdoors with cold
    or chalky hands. Contrast is high because you read the screen in sunlight.
    One accent color only. Everything else is a neutral gray.
@@ -288,7 +288,7 @@ input:focus, textarea:focus { outline: 2px solid var(--accent-color); outline-of
 }
 .notice-error { border-color: var(--error-color); color: var(--error-color); }
 
-#tab-bar {
+#tab-bar, #gym-tab-bar {
   position: fixed; left: 0; right: 0; bottom: 0; display: flex;
   background: var(--panel-background); border-top: 1px solid var(--edge-color);
   padding-bottom: env(safe-area-inset-bottom);
@@ -412,6 +412,37 @@ details[open] > .tree-summary::before { content: "\25BE"; }
 #duel-screen .field-pair { margin-top: 6px; }
 #duel-screen select { width: 100%; min-height: 38px; padding: 6px 9px; border: 1px solid var(--edge-color);
   border-radius: 7px; background: var(--panel-background); color: var(--text-color); font-size: 15px; font-family: inherit; }
+
+/* --- Mode switch, gym session, workouts, and scale editor -------------------- */
+
+#mode-switch { margin-bottom: 8px; }
+#mode-switch .chip { min-height: 36px; font-size: 14px; }
+.session-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-top: 8px; }
+.session-gym { font-weight: 600; font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-elapsed { font-size: 13px; color: var(--quiet-text-color); flex: 0 0 auto; }
+.points-line { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; }
+.points-big { font-size: 40px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.points-goal { font-size: 15px; color: var(--quiet-text-color); }
+.points-reached { font-size: 13px; font-weight: 700; color: var(--send-color); margin-left: auto; }
+#session-progress { transition: width 0.2s; }
+#session-count { font-size: 13px; color: var(--quiet-text-color); margin: 4px 0 8px; }
+#session-step-buttons .chip { min-height: 44px; }
+#session-step-buttons .chip-grade { display: block; font-size: 11px; margin: 0; }
+#session-range-block { margin-top: 8px; padding: 8px; border: 1px solid var(--accent-color); border-radius: 8px; }
+#session-range-name { font-size: 14px; font-weight: 600; margin: 0 0 6px; }
+.workout-big { font-size: 40px; font-weight: 700; text-align: center; margin: 14px 0; }
+.workout-progress { text-align: center; font-size: 14px; color: var(--quiet-text-color); }
+.workout-timer { font-size: 32px; text-align: center; font-variant-numeric: tabular-nums; color: var(--accent-color); margin: 8px 0; }
+#gym-workout-screen select, #gym-session-screen select, #gym-scales-screen select, #gym-workout-screen input[type="number"],
+#gym-session-screen input[type="number"], #gym-scales-screen input[type="search"] {
+  width: 100%; min-height: 38px; padding: 6px 9px; border: 1px solid var(--edge-color); border-radius: 7px;
+  background: var(--panel-background); color: var(--text-color); font-size: 15px; font-family: inherit;
+}
+.step-row { display: flex; gap: 5px; align-items: center; margin-top: 6px; }
+.step-row .step-label { flex: 2 1 0; min-width: 0; }
+.step-row select { flex: 1 1 0; min-width: 0; }
+.step-row .step-to { font-size: 12px; color: var(--quiet-text-color); }
+.step-row .remove-button { min-height: 38px; padding: 4px 10px; }
 </style>
 </head>
 <body>
@@ -428,6 +459,11 @@ details[open] > .tree-summary::before { content: "\25BE"; }
 <div id="message-bar" class="notice" hidden></div>
 
 <main>
+
+  <div id="mode-switch" class="choice-row" role="group" aria-label="Mode">
+    <button type="button" id="mode-outdoor-button" class="chip">Outdoor</button>
+    <button type="button" id="mode-gym-button" class="chip">Gym</button>
+  </div>
 
   <!-- ===================== SCREEN 1: LOG A CLIMB ===================== -->
   <section id="log-screen" class="screen">
@@ -480,8 +516,6 @@ details[open] > .tree-summary::before { content: "\25BE"; }
       <div class="choice-row compact-row">
         <button type="button" id="send-yes-button" class="chip">Sent</button>
         <button type="button" id="send-no-button" class="chip">No send</button>
-        <button type="button" id="outdoor-button" class="chip">Outdoor</button>
-        <button type="button" id="indoor-button" class="chip">Indoor</button>
       </div>
 
       <div id="location-row" class="choice-row compact-row">
@@ -655,7 +689,166 @@ details[open] > .tree-summary::before { content: "\25BE"; }
     </div>
   </section>
 
+
+  <!-- ===================== GYM SCREEN 1: SESSION ===================== -->
+  <section id="gym-session-screen" class="screen" hidden>
+    <div id="session-start-panel" class="panel">
+      <h2>Start a session</h2>
+      <div class="picker-slot" id="gym-name-slot">
+        <select id="gym-name-select" aria-label="Gym"></select>
+        <div class="picker-new" id="gym-name-new" hidden>
+          <input type="search" id="gym-name-input" autocomplete="off" autocapitalize="words"
+                 placeholder="New gym" aria-label="New gym">
+          <button type="button" id="gym-name-list-button" class="picker-list-button" aria-label="Pick from the list">&#8801;</button>
+        </div>
+      </div>
+      <div id="session-scale-row" class="compact-row">
+        <span class="field-name" style="margin-top:8px">Grade scale for this gym</span>
+        <select id="session-scale-select" aria-label="Scale"></select>
+      </div>
+      <span class="field-name" style="margin-top:10px">Goal</span>
+      <input type="number" id="session-goal-input" inputmode="numeric" min="0" placeholder="V points to reach (optional)" aria-label="Goal V points">
+      <button type="button" id="start-session-button" class="button-primary">Start session</button>
+    </div>
+
+    <div id="session-open-panel" class="panel" hidden>
+      <div class="session-head">
+        <span id="session-gym-name" class="session-gym"></span>
+        <span id="session-elapsed" class="session-elapsed"></span>
+      </div>
+      <div class="points-line">
+        <span id="session-points" class="points-big">0</span>
+        <span id="session-goal" class="points-goal"></span>
+        <span id="session-goal-reached" class="points-reached" hidden>Goal reached</span>
+      </div>
+      <div class="bar-track"><div id="session-progress" class="bar-fill" style="width:0%"></div></div>
+      <p id="session-count"></p>
+      <div id="session-step-buttons" class="chip-row" role="group" aria-label="Grade"></div>
+      <div id="session-range-block" hidden>
+        <p id="session-range-name"></p>
+        <div id="session-range-buttons" class="chip-row"></div>
+      </div>
+      <div id="session-send-list" class="compact-row"></div>
+      <div class="button-row">
+        <button type="button" id="undo-send-button" class="button-quiet">Undo last</button>
+        <button type="button" id="end-session-button" class="button-quiet">End session</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== GYM SCREEN 2: WORKOUTS ===================== -->
+  <section id="gym-workout-screen" class="screen" hidden>
+    <div id="workout-setup-panel" class="panel">
+      <h2>Workout</h2>
+      <p id="workout-no-session" class="quiet-text">Start a session first. A workout logs its sends into the open session.</p>
+      <div id="workout-form" hidden>
+        <div class="choice-row" role="group" aria-label="Workout">
+          <button type="button" id="workout-fourbyfour-button" class="chip">4x4</button>
+          <button type="button" id="workout-pyramid-button" class="chip">Pyramid</button>
+        </div>
+        <div id="fourbyfour-setup">
+          <span class="field-name">Four problems, four rounds</span>
+          <div class="field-pair">
+            <div><select id="fourbyfour-grade-1" aria-label="Problem 1"></select></div>
+            <div><select id="fourbyfour-grade-2" aria-label="Problem 2"></select></div>
+          </div>
+          <div class="field-pair compact-row">
+            <div><select id="fourbyfour-grade-3" aria-label="Problem 3"></select></div>
+            <div><select id="fourbyfour-grade-4" aria-label="Problem 4"></select></div>
+          </div>
+          <span class="field-name">Rest between rounds, seconds</span>
+          <input type="number" id="fourbyfour-rest-input" inputmode="numeric" min="0" aria-label="Rest seconds">
+        </div>
+        <div id="pyramid-setup" hidden>
+          <span class="field-name">Bottom and top</span>
+          <div class="field-pair">
+            <div><select id="pyramid-bottom-select" aria-label="Bottom grade"></select></div>
+            <div><select id="pyramid-top-select" aria-label="Top grade"></select></div>
+          </div>
+          <span class="field-name">Rest between problems, seconds</span>
+          <input type="number" id="pyramid-rest-input" inputmode="numeric" min="0" aria-label="Rest seconds">
+        </div>
+        <button type="button" id="start-workout-button" class="button-primary">Start workout</button>
+      </div>
+    </div>
+
+    <div id="workout-run-panel" class="panel" hidden>
+      <h2 id="workout-title"></h2>
+      <p id="workout-progress" class="workout-progress"></p>
+      <div id="workout-current" class="workout-big"></div>
+      <div id="workout-timer" class="workout-timer" hidden></div>
+      <button type="button" id="workout-sent-button" class="button-primary">Sent</button>
+      <div class="button-row">
+        <button type="button" id="workout-skip-button" class="button-quiet">Skip</button>
+        <button type="button" id="workout-stop-button" class="button-quiet">Stop workout</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== GYM SCREEN 3: HISTORY ===================== -->
+  <section id="gym-history-screen" class="screen" hidden>
+    <h2>Sessions</h2>
+    <p id="session-history-total" class="quiet-text"></p>
+    <div id="session-history"></div>
+  </section>
+
+  <!-- ===================== GYM SCREEN 4: SCALES ===================== -->
+  <section id="gym-scales-screen" class="screen" hidden>
+    <h2>Grade scales</h2>
+    <p class="quiet-text">A scale maps each step of a gym to a V grade, or to a range. Points come from the V grade.</p>
+    <div id="scale-list"></div>
+    <div class="button-row">
+      <button type="button" id="new-scale-button" class="button-quiet">New scale</button>
+    </div>
+    <div id="scale-form-panel" class="panel" hidden>
+      <h3 id="scale-form-title">New scale</h3>
+      <input type="search" id="scale-name-input" autocomplete="off" autocapitalize="words" placeholder="Scale name, such as Movement colors" aria-label="Scale name">
+      <span class="field-name">Steps, easiest first</span>
+      <div id="scale-steps"></div>
+      <div class="button-row">
+        <button type="button" id="add-step-button" class="button-quiet">Add a step</button>
+      </div>
+      <button type="button" id="save-scale-button" class="button-primary">Save scale</button>
+      <div class="button-row">
+        <button type="button" id="cancel-scale-button" class="button-quiet">Cancel</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== GYM SCREEN 5: DATA ===================== -->
+  <section id="gym-data-screen" class="screen" hidden>
+    <h2>Gym data</h2>
+    <div class="panel">
+      <h3>Backup</h3>
+      <p class="quiet-text">Two files: the sessions and the custom scales. Kept apart from the outdoor files.</p>
+      <button type="button" id="export-sessions-button" class="button-primary">Export sessions CSV</button>
+      <button type="button" id="export-scales-button" class="button-primary">Export scales CSV</button>
+    </div>
+    <div class="panel">
+      <h3>Restore</h3>
+      <p class="quiet-text">Select a gym CSV file that this app exported.</p>
+      <input type="file" id="gym-import-file-input" accept=".csv,text/csv">
+      <div class="button-row">
+        <button type="button" id="gym-import-add-button" class="button-quiet">Merge</button>
+        <button type="button" id="gym-import-replace-button" class="button-quiet">Replace</button>
+      </div>
+      <p id="gym-import-result" class="quiet-text"></p>
+    </div>
+    <div class="panel">
+      <h3>Status</h3>
+      <p id="gym-storage-status" class="quiet-text"></p>
+    </div>
+  </section>
+
 </main>
+
+<nav id="gym-tab-bar" hidden>
+  <button type="button" class="tab" data-screen-name="gym-session">Session</button>
+  <button type="button" class="tab" data-screen-name="gym-workout">Workouts</button>
+  <button type="button" class="tab" data-screen-name="gym-history">History</button>
+  <button type="button" class="tab" data-screen-name="gym-scales">Scales</button>
+  <button type="button" class="tab" data-screen-name="gym-data">Data</button>
+</nav>
 
 <nav id="tab-bar">
   <button type="button" class="tab" data-screen-name="log">Log</button>
@@ -669,7 +862,7 @@ details[open] > .tree-summary::before { content: "\25BE"; }
 <script>
 "use strict";
 /* ==========================================================================
-   SECTION 2 OF 8 - STORAGE
+   SECTION {n} OF 10 - STORAGE
 
    WHAT THIS SECTION DOES
      Holds the climbing log on the phone. It reads and writes every climb
@@ -1387,7 +1580,7 @@ function removeDuel(identifier, nowIso) {
 }
 
 /* ==========================================================================
-   SECTION 3 OF 8 - COORDINATES
+   SECTION {n} OF 10 - COORDINATES
 
    WHAT THIS SECTION DOES
      Converts between the three ways that a guidebook writes a position and
@@ -1603,7 +1796,7 @@ function makeDecimalReadout(latitudeDegrees, longitudeDegrees) {
 }
 
 /* ==========================================================================
-   SECTION 4 OF 8 - CSV FILE
+   SECTION {n} OF 10 - CSV FILE
 
    WHAT THIS SECTION DOES
      Writes the climbing log as a CSV file, and reads a CSV file back. The CSV
@@ -2091,7 +2284,7 @@ function mergeDuels(existingDuels, newDuels) {
 }
 
 /* ==========================================================================
-   SECTION 5 OF 8 - STATISTICS
+   SECTION {n} OF 10 - STATISTICS
 
    WHAT THIS SECTION DOES
      Counts the numbers that the Stats screen shows: the climbs, the sends,
@@ -2652,7 +2845,7 @@ function listDuelPeople(duels) {
 }
 
 /* ==========================================================================
-   SECTION 6 OF 8 - DRAWING THE SCREENS
+   SECTION {n} OF 10 - DRAWING THE SCREENS
 
    WHAT THIS SECTION DOES
      Draws the Climbs screen and the Stats screen from the climb records.
@@ -3142,7 +3335,7 @@ function drawSessionList(climbs) {
 }
 
 /* ==========================================================================
-   SECTION 7 OF 8 - THE COORDINATE BOXES
+   SECTION {n} OF 10 - THE COORDINATE BOXES
 
    WHAT THIS SECTION DOES
      Runs the boxes where you type a position. A three-way button selects the
@@ -3593,7 +3786,7 @@ function openMapForCoordinates(onMessage) {
 }
 
 /* ==========================================================================
-   SECTION 8 OF 8 - THE APP
+   SECTION 8 OF 10 - THE OUTDOOR APP
 
    WHAT THIS SECTION DOES
      Joins the other sections together. It runs the pickers, the Log screen,
@@ -3622,7 +3815,8 @@ function openMapForCoordinates(onMessage) {
 
 var MESSAGE_TIMEOUT_MILLISECONDS = 5000;
 var FILE_ADDRESS_RELEASE_MILLISECONDS = 1000;
-var SCREEN_NAMES = ["log", "climbs", "browse", "duel", "stats", "data"];
+var SCREEN_NAMES = ["log", "climbs", "browse", "duel", "stats", "data",
+  "gym-session", "gym-workout", "gym-history", "gym-scales", "gym-data"];
 var NEW_NAME_OPTION_VALUE = "__new__";
 var LOG_PLACE_PREFIXES = ["log-locale", "log-area", "log-boulder"];
 var DUEL_PLACE_PREFIXES = ["duel-locale", "duel-area", "duel-boulder"];
@@ -3651,7 +3845,7 @@ function showMessage(messageText, isError) {
 }
 
 /**
- * Shows one screen and hides the other five.
+ * Shows one screen and hides the others, on either side of the app.
  * @param {string} screenName - One of the names in SCREEN_NAMES.
  * @returns {void}
  */
@@ -3907,10 +4101,9 @@ function setSendChoice(isSend) {
  * @returns {void}
  */
 function setPlaceChoice(isIndoor) {
+  /* The outdoor log is always outdoor now. Gym climbs live on the gym side.
+     The flag stays so that an old record marked indoor still validates. */
   formState.isIndoor = isIndoor === true;
-  writeSettings({ isIndoor: formState.isIndoor });
-  findElement("indoor-button").setAttribute("aria-pressed", String(formState.isIndoor));
-  findElement("outdoor-button").setAttribute("aria-pressed", String(formState.isIndoor === false));
   drawLocationVisibility();
 }
 
@@ -4730,6 +4923,7 @@ function refreshScreens() {
   drawDuelRecords(duels, handleRemoveDuel);
   drawStatistics(climbs);
   drawStorageStatus(climbs.length, duels.length);
+  drawGymScreens();
 }
 
 /**
@@ -4757,8 +4951,6 @@ function restorePlacePickers(prefixes, climbPrefix, place, records) {
 function connectLogScreen() {
   findElement("send-yes-button").addEventListener("click", function chooseSend() { setSendChoice(true); });
   findElement("send-no-button").addEventListener("click", function chooseNoSend() { setSendChoice(false); });
-  findElement("outdoor-button").addEventListener("click", function chooseOutdoor() { setPlaceChoice(false); });
-  findElement("indoor-button").addEventListener("click", function chooseIndoor() { setPlaceChoice(true); });
   for (var prefixIndex = 0; prefixIndex < LOG_PLACE_PREFIXES.length; prefixIndex += 1) {
     connectPicker(LOG_PLACE_PREFIXES[prefixIndex], handlePlaceChange);
   }
@@ -4794,7 +4986,7 @@ function start() {
   buildDuelGradeSelect();
   setGradeValue(0);
   setSendChoice(true);
-  setPlaceChoice(settings.isIndoor === true);
+  setPlaceChoice(false);
   connectCoordinateControls(showMessage);
   connectLogScreen();
   connectDuelScreen();
@@ -4816,7 +5008,8 @@ function start() {
   drawPersonRows(settings.duelPeople);
   setLocationOn(settings.isLocationOn === true);
   restoreBoulderCoordinates();
-  showScreen("log");
+  connectGymScreens();
+  setAppMode(APP_MODES.indexOf(settings.appMode) >= 0 ? settings.appMode : "outdoor");
 }
 
 /**
@@ -4845,6 +5038,1819 @@ function connectTabButton(tabButton) {
   tabButton.addEventListener("click", function openScreen() {
     showScreen(tabButton.dataset.screenName);
   });
+}
+
+
+/* ==========================================================================
+   SECTION 9 OF 10 - GYM DATA
+
+   WHAT THIS SECTION DOES
+     Holds the gym side of the app, apart from the outdoor log. A gym visit
+     is a session: it starts, it collects sends, it ends with a V point
+     total against a goal. Each gym uses a grade scale. The V scale is built
+     in. A custom scale maps each step of the gym, such as a color or a
+     number, to a V grade or a range of V grades. Points come from the V
+     grade, with the same rule as the outdoor log.
+
+   INPUTS
+     Sessions and scales from the gym screens and from a CSV file.
+
+   OUTPUTS
+     Validated session and scale records, newest first. CSV text for each.
+
+   SIDE EFFECTS
+     Writes to the storage of the browser under keys that start with
+     "climbTracker.gym". No outdoor key is touched.
+
+   FAILURE MODES
+     A session with a bad gym name, a bad time, or a bad send is rejected.
+     A scale with no steps, or a step out of the V range, is rejected.
+
+   ASSUMPTIONS
+     One session is open at a time. The V scale cannot be changed or
+     removed. A gym uses the scale of its latest session.
+   ========================================================================== */
+
+var GYM_SESSION_STORAGE_KEY = "climbTracker.gymSessions";
+var GYM_SCALE_STORAGE_KEY = "climbTracker.gymScales";
+var MAXIMUM_SESSION_COUNT = 5000;
+var MAXIMUM_SENDS_IN_SESSION = 500;
+var MAXIMUM_SCALE_STEP_COUNT = 40;
+var V_SCALE_IDENTIFIER = "v-scale";
+
+/**
+ * Counts the points for one V grade. VB, V0, and V1 are worth 1 point. From
+ * V2 up the grade is the points. The gym and the outdoor log share this rule.
+ * @param {number} gradeValue - A V grade from -1 (VB) to 17.
+ * @returns {number} The points.
+ */
+function countPointsForGrade(gradeValue) {
+  if (Number.isInteger(gradeValue) === false ||
+      gradeValue < MINIMUM_GRADE_VALUE || gradeValue > MAXIMUM_GRADE_VALUE) {
+    throw new Error("countPointsForGrade got " + gradeValue + ". The range is VB to V17.");
+  }
+  return Math.max(MINIMUM_SEND_POINTS, gradeValue);
+}
+
+/**
+ * Builds the V scale: one step for each grade, each mapped to itself.
+ * @returns {object} The scale.
+ */
+function makeVScale() {
+  var steps = [];
+  for (var gradeValue = MINIMUM_GRADE_VALUE; gradeValue <= MAXIMUM_GRADE_VALUE; gradeValue += 1) {
+    steps.push({ label: makeGradeText(gradeValue), gradeLow: gradeValue, gradeHigh: gradeValue });
+  }
+  return {
+    identifier: V_SCALE_IDENTIFIER, name: "V scale", steps: steps,
+    modifiedAtIso: "2026-01-01T00:00:00.000Z", isDeleted: false, isBuiltIn: true
+  };
+}
+
+/**
+ * Checks one raw scale record and converts it to a typed record.
+ * @param {object} rawScale - Untrusted values.
+ * @returns {object} An object with scale and errorMessage.
+ */
+function validateScale(rawScale) {
+  if (rawScale === null || typeof rawScale !== "object") {
+    return { scale: null, errorMessage: "The scale record is not an object." };
+  }
+  var scaleName = cleanText(rawScale.name);
+  if (scaleName.length === 0) {
+    return { scale: null, errorMessage: "The scale has no name. Enter a name." };
+  }
+  if (Array.isArray(rawScale.steps) === false || rawScale.steps.length === 0) {
+    return { scale: null, errorMessage: "The scale " + scaleName + " has no steps. Add at least one." };
+  }
+  if (rawScale.steps.length > MAXIMUM_SCALE_STEP_COUNT) {
+    return { scale: null, errorMessage: "A scale holds at most " + MAXIMUM_SCALE_STEP_COUNT + " steps." };
+  }
+  var steps = [];
+  var seenLabels = {};
+  for (var stepIndex = 0; stepIndex < rawScale.steps.length; stepIndex += 1) {
+    var stepResult = validateScaleStep(rawScale.steps[stepIndex], seenLabels);
+    if (stepResult.errorMessage !== null) {
+      return { scale: null, errorMessage: stepResult.errorMessage };
+    }
+    steps.push(stepResult.step);
+  }
+  var modifiedAtIso = cleanText(rawScale.modifiedAtIso);
+  var scale = {
+    identifier: cleanText(rawScale.identifier),
+    name: scaleName,
+    steps: steps,
+    modifiedAtIso: Number.isNaN(Date.parse(modifiedAtIso)) === true ? new Date().toISOString() : modifiedAtIso,
+    isDeleted: rawScale.isDeleted === true,
+    isBuiltIn: false
+  };
+  if (scale.identifier.length === 0) {
+    scale.identifier = "scale-" + makeClimbIdentifier(scale.modifiedAtIso, Math.random()).slice(6);
+  }
+  return { scale: scale, errorMessage: null };
+}
+
+/**
+ * Checks one step of a scale: a label and a V grade or a range of V grades.
+ * @param {object} rawStep - Untrusted values.
+ * @param {object} seenLabels - The labels already used, changed in place.
+ * @returns {object} An object with step and errorMessage.
+ */
+function validateScaleStep(rawStep, seenLabels) {
+  var label = cleanText(rawStep === null ? "" : rawStep.label);
+  if (label.length === 0) {
+    return { step: null, errorMessage: "A step has no label. Give each step a name." };
+  }
+  if (seenLabels[label] === true) {
+    return { step: null, errorMessage: "The step " + label + " is in the scale twice." };
+  }
+  seenLabels[label] = true;
+  var gradeLow = Number(rawStep.gradeLow);
+  var gradeHigh = isFilledValue(rawStep.gradeHigh) === true ? Number(rawStep.gradeHigh) : gradeLow;
+  var isLowGood = Number.isInteger(gradeLow) === true && gradeLow >= MINIMUM_GRADE_VALUE && gradeLow <= MAXIMUM_GRADE_VALUE;
+  var isHighGood = Number.isInteger(gradeHigh) === true && gradeHigh >= MINIMUM_GRADE_VALUE && gradeHigh <= MAXIMUM_GRADE_VALUE;
+  if (isLowGood === false || isHighGood === false) {
+    return { step: null, errorMessage: "The step " + label + " needs a V grade from VB to V17." };
+  }
+  if (gradeHigh < gradeLow) {
+    return { step: null, errorMessage: "The step " + label + " has its range upside down." };
+  }
+  return { step: { label: label, gradeLow: gradeLow, gradeHigh: gradeHigh }, errorMessage: null };
+}
+
+/**
+ * Reads every stored scale, the removed ones included.
+ * @returns {Array} Validated scale records.
+ */
+function readStoredScalesWithRemoved() {
+  var storedText = readTextValue(GYM_SCALE_STORAGE_KEY);
+  if (storedText === null || storedText.length === 0) {
+    return [];
+  }
+  var parsedRecords = [];
+  try {
+    parsedRecords = JSON.parse(storedText);
+  } catch (parseError) {
+    console.error("The stored scales are damaged: " + parseError.message);
+    return [];
+  }
+  if (Array.isArray(parsedRecords) === false) {
+    return [];
+  }
+  var scales = [];
+  for (var recordIndex = 0; recordIndex < parsedRecords.length; recordIndex += 1) {
+    var result = validateScale(parsedRecords[recordIndex]);
+    if (result.scale !== null) {
+      scales.push(result.scale);
+    }
+  }
+  return scales;
+}
+
+/**
+ * Reads the scales that a gym can use: the V scale, then the custom ones.
+ * @returns {Array} Validated scale records.
+ */
+function readAllScales() {
+  var customScales = readStoredScalesWithRemoved().filter(function isKept(scale) {
+    return scale.isDeleted === false;
+  }).sort(function compareByName(first, second) {
+    return first.name.localeCompare(second.name);
+  });
+  return [makeVScale()].concat(customScales);
+}
+
+/**
+ * Writes the custom scales. The V scale is never stored.
+ * @param {Array} scales - Validated scale records.
+ * @returns {void}
+ */
+function writeStoredScales(scales) {
+  var customScales = scales.filter(function isCustom(scale) {
+    return scale.identifier !== V_SCALE_IDENTIFIER;
+  });
+  writeTextValue(GYM_SCALE_STORAGE_KEY, JSON.stringify(customScales));
+}
+
+/**
+ * Adds or replaces one custom scale.
+ * @param {object} rawScale - Untrusted values from the scale form.
+ * @returns {object} An object with scale and errorMessage.
+ */
+function saveScale(rawScale) {
+  var result = validateScale(rawScale);
+  if (result.scale === null) {
+    return result;
+  }
+  var scales = readStoredScalesWithRemoved().filter(function isOther(scale) {
+    return scale.identifier !== result.scale.identifier;
+  });
+  scales.push(result.scale);
+  writeStoredScales(scales);
+  return result;
+}
+
+/**
+ * Marks one custom scale as removed.
+ * @param {string} identifier - The identifier of the scale.
+ * @param {string} nowIso - The current time in ISO format.
+ * @returns {boolean} True when one scale was marked.
+ */
+function removeScale(identifier, nowIso) {
+  if (identifier === V_SCALE_IDENTIFIER) {
+    return false;
+  }
+  var scales = readStoredScalesWithRemoved();
+  var wasFound = false;
+  for (var scaleIndex = 0; scaleIndex < scales.length; scaleIndex += 1) {
+    if (scales[scaleIndex].identifier === identifier) {
+      scales[scaleIndex].isDeleted = true;
+      scales[scaleIndex].modifiedAtIso = nowIso;
+      wasFound = true;
+    }
+  }
+  if (wasFound === true) {
+    writeStoredScales(scales);
+  }
+  return wasFound;
+}
+
+/**
+ * Finds one scale by its identifier. Falls back to the V scale, so that a
+ * session whose scale was removed still shows its sends.
+ * @param {string} identifier - The identifier of the scale.
+ * @returns {object} The scale.
+ */
+function findScale(identifier) {
+  var scales = readAllScales().concat(readStoredScalesWithRemoved());
+  for (var scaleIndex = 0; scaleIndex < scales.length; scaleIndex += 1) {
+    if (scales[scaleIndex].identifier === identifier) {
+      return scales[scaleIndex];
+    }
+  }
+  return makeVScale();
+}
+
+/**
+ * Checks one raw session record and converts it to a typed record.
+ * @param {object} rawSession - Untrusted values.
+ * @returns {object} An object with session and errorMessage.
+ */
+function validateSession(rawSession) {
+  if (rawSession === null || typeof rawSession !== "object") {
+    return { session: null, errorMessage: "The session record is not an object." };
+  }
+  var gymName = cleanText(rawSession.gymName);
+  if (gymName.length === 0) {
+    return { session: null, errorMessage: "The gym has no name. Enter a gym." };
+  }
+  var startedAtIso = cleanText(rawSession.startedAtIso);
+  if (Number.isNaN(Date.parse(startedAtIso)) === true) {
+    return { session: null, errorMessage: "The start time is not readable: " + startedAtIso + "." };
+  }
+  var endedAtIso = cleanText(rawSession.endedAtIso);
+  if (endedAtIso.length > 0 && Number.isNaN(Date.parse(endedAtIso)) === true) {
+    return { session: null, errorMessage: "The end time is not readable: " + endedAtIso + "." };
+  }
+  var goalPoints = isFilledValue(rawSession.goalPoints) === true ? Number(rawSession.goalPoints) : 0;
+  if (Number.isInteger(goalPoints) === false || goalPoints < 0 || goalPoints > 100000) {
+    return { session: null, errorMessage: "The goal must be a whole number of V points." };
+  }
+  var sendResult = validateSends(rawSession.sends);
+  if (sendResult.errorMessage !== null) {
+    return { session: null, errorMessage: sendResult.errorMessage };
+  }
+  var modifiedAtIso = cleanText(rawSession.modifiedAtIso);
+  var session = {
+    identifier: cleanText(rawSession.identifier),
+    gymName: gymName,
+    scaleIdentifier: cleanText(rawSession.scaleIdentifier) || V_SCALE_IDENTIFIER,
+    startedAtIso: startedAtIso,
+    endedAtIso: endedAtIso,
+    goalPoints: goalPoints,
+    notes: cleanText(rawSession.notes),
+    sends: sendResult.sends,
+    modifiedAtIso: Number.isNaN(Date.parse(modifiedAtIso)) === true ? startedAtIso : modifiedAtIso,
+    isDeleted: rawSession.isDeleted === true
+  };
+  if (session.identifier.length === 0) {
+    session.identifier = "session-" + makeClimbIdentifier(startedAtIso, Math.random()).slice(6);
+  }
+  return { session: session, errorMessage: null };
+}
+
+/**
+ * Checks the sends of a session.
+ * @param {*} rawSends - Untrusted values. An absent list means no sends.
+ * @returns {object} An object with sends and errorMessage.
+ */
+function validateSends(rawSends) {
+  if (rawSends === null || rawSends === undefined) {
+    return { sends: [], errorMessage: null };
+  }
+  if (Array.isArray(rawSends) === false) {
+    return { sends: null, errorMessage: "The sends of the session are not a list." };
+  }
+  if (rawSends.length > MAXIMUM_SENDS_IN_SESSION) {
+    return { sends: null, errorMessage: "A session holds at most " + MAXIMUM_SENDS_IN_SESSION + " sends." };
+  }
+  var sends = [];
+  for (var sendIndex = 0; sendIndex < rawSends.length; sendIndex += 1) {
+    var rawSend = rawSends[sendIndex];
+    var gradeValue = Number(rawSend.gradeValue);
+    if (Number.isInteger(gradeValue) === false || gradeValue < MINIMUM_GRADE_VALUE || gradeValue > MAXIMUM_GRADE_VALUE) {
+      return { sends: null, errorMessage: "A send has a grade outside VB to V17." };
+    }
+    var sentAtIso = cleanText(rawSend.sentAtIso);
+    if (Number.isNaN(Date.parse(sentAtIso)) === true) {
+      return { sends: null, errorMessage: "A send has a time that is not readable." };
+    }
+    sends.push({
+      identifier: cleanText(rawSend.identifier) || ("send-" + makeClimbIdentifier(sentAtIso, Math.random()).slice(6)),
+      sentAtIso: sentAtIso,
+      stepLabel: cleanText(rawSend.stepLabel) || makeGradeText(gradeValue),
+      gradeValue: gradeValue,
+      workoutName: cleanText(rawSend.workoutName)
+    });
+  }
+  return { sends: sends, errorMessage: null };
+}
+
+/**
+ * Reads every session, the removed ones included, newest first.
+ * @returns {Array} Validated session records.
+ */
+function readAllSessionsWithRemoved() {
+  var storedText = readTextValue(GYM_SESSION_STORAGE_KEY);
+  if (storedText === null || storedText.length === 0) {
+    return [];
+  }
+  var parsedRecords = [];
+  try {
+    parsedRecords = JSON.parse(storedText);
+  } catch (parseError) {
+    console.error("The stored sessions are damaged: " + parseError.message);
+    return [];
+  }
+  if (Array.isArray(parsedRecords) === false) {
+    return [];
+  }
+  var sessions = [];
+  var recordCount = Math.min(parsedRecords.length, MAXIMUM_SESSION_COUNT);
+  for (var recordIndex = 0; recordIndex < recordCount; recordIndex += 1) {
+    var result = validateSession(parsedRecords[recordIndex]);
+    if (result.session !== null) {
+      sessions.push(result.session);
+    }
+  }
+  return sessions.sort(function compareByStart(first, second) {
+    return Date.parse(second.startedAtIso) - Date.parse(first.startedAtIso);
+  });
+}
+
+/**
+ * Reads the sessions that the person still has, newest first.
+ * @returns {Array} Validated session records.
+ */
+function readAllSessions() {
+  return readAllSessionsWithRemoved().filter(function isKept(session) {
+    return session.isDeleted === false;
+  });
+}
+
+/**
+ * Writes the full set of sessions.
+ * @param {Array} sessions - Validated session records.
+ * @returns {void}
+ */
+function writeAllSessions(sessions) {
+  if (Array.isArray(sessions) === false) {
+    throw new Error("writeAllSessions needs an array. Got " + typeof sessions + ".");
+  }
+  if (sessions.length > MAXIMUM_SESSION_COUNT) {
+    throw new Error("The gym log has " + sessions.length + " sessions. The limit is " + MAXIMUM_SESSION_COUNT + ".");
+  }
+  writeTextValue(GYM_SESSION_STORAGE_KEY, JSON.stringify(sessions));
+}
+
+/**
+ * Adds or replaces one session by identifier.
+ * @param {object} rawSession - Untrusted values.
+ * @returns {object} An object with session and errorMessage.
+ */
+function saveSession(rawSession) {
+  var result = validateSession(rawSession);
+  if (result.session === null) {
+    return result;
+  }
+  var sessions = readAllSessionsWithRemoved().filter(function isOther(session) {
+    return session.identifier !== result.session.identifier;
+  });
+  sessions.push(result.session);
+  writeAllSessions(sessions);
+  return result;
+}
+
+/**
+ * Marks one session as removed.
+ * @param {string} identifier - The identifier of the session.
+ * @param {string} nowIso - The current time in ISO format.
+ * @returns {boolean} True when one session was marked.
+ */
+function removeSession(identifier, nowIso) {
+  var sessions = readAllSessionsWithRemoved();
+  var wasFound = false;
+  for (var sessionIndex = 0; sessionIndex < sessions.length; sessionIndex += 1) {
+    if (sessions[sessionIndex].identifier === identifier) {
+      sessions[sessionIndex].isDeleted = true;
+      sessions[sessionIndex].modifiedAtIso = nowIso;
+      wasFound = true;
+    }
+  }
+  if (wasFound === true) {
+    writeAllSessions(sessions);
+  }
+  return wasFound;
+}
+
+/**
+ * Finds the session that is open now, if any.
+ * @returns {object|null} The open session, or null.
+ */
+function readOpenSession() {
+  var sessions = readAllSessions();
+  for (var sessionIndex = 0; sessionIndex < sessions.length; sessionIndex += 1) {
+    if (sessions[sessionIndex].endedAtIso.length === 0) {
+      return sessions[sessionIndex];
+    }
+  }
+  return null;
+}
+
+/**
+ * Counts the totals of one session.
+ * @param {object} session - A validated session record.
+ * @returns {object} pointTotal, sendCount, and hardestGrade (-99 for none).
+ */
+function summarizeSession(session) {
+  if (session === null || typeof session !== "object") {
+    throw new Error("summarizeSession needs a session. Got " + typeof session + ".");
+  }
+  var pointTotal = 0;
+  var hardestGrade = -99;
+  for (var sendIndex = 0; sendIndex < session.sends.length; sendIndex += 1) {
+    var gradeValue = session.sends[sendIndex].gradeValue;
+    pointTotal += countPointsForGrade(gradeValue);
+    if (gradeValue > hardestGrade) {
+      hardestGrade = gradeValue;
+    }
+  }
+  return { pointTotal: pointTotal, sendCount: session.sends.length, hardestGrade: hardestGrade };
+}
+
+/**
+ * Collects the gym names that the sessions have.
+ * @param {Array} sessions - Validated session records.
+ * @returns {Array} The names in alphabetical order.
+ */
+function listGymNames(sessions) {
+  var nameSet = {};
+  for (var sessionIndex = 0; sessionIndex < sessions.length; sessionIndex += 1) {
+    nameSet[sessions[sessionIndex].gymName] = true;
+  }
+  return Object.keys(nameSet).sort();
+}
+
+/**
+ * Finds the scale that a gym used last. A gym remembers its scale this way,
+ * so that the app keeps no separate list of gyms.
+ * @param {Array} sessions - Validated session records, newest first.
+ * @param {string} gymName - The gym.
+ * @returns {string|null} The scale identifier, or null for a new gym.
+ */
+function findGymScaleIdentifier(sessions, gymName) {
+  for (var sessionIndex = 0; sessionIndex < sessions.length; sessionIndex += 1) {
+    if (sessions[sessionIndex].gymName === gymName) {
+      return sessions[sessionIndex].scaleIdentifier;
+    }
+  }
+  return null;
+}
+
+/**
+ * Builds the pyramid of grades: from the bottom up to the top and back.
+ * @param {number} bottomGrade - The first and last grade.
+ * @param {number} topGrade - The grade at the peak.
+ * @returns {Array} The grades in order, such as [2, 3, 4, 3, 2].
+ */
+function makePyramidGrades(bottomGrade, topGrade) {
+  if (Number.isInteger(bottomGrade) === false || Number.isInteger(topGrade) === false || topGrade < bottomGrade) {
+    throw new Error("makePyramidGrades needs a bottom grade at or below the top grade.");
+  }
+  var grades = [];
+  for (var upGrade = bottomGrade; upGrade <= topGrade; upGrade += 1) {
+    grades.push(upGrade);
+  }
+  for (var downGrade = topGrade - 1; downGrade >= bottomGrade; downGrade -= 1) {
+    grades.push(downGrade);
+  }
+  return grades;
+}
+
+/* ------------------------------ GYM CSV --------------------------------- */
+
+var GYM_SESSION_CSV_COLUMN_NAMES = [
+  "session_identifier", "gym_name", "scale_identifier", "started_at_iso", "ended_at_iso", "goal_points",
+  "send_identifier", "sent_at_iso", "step_label", "grade_v_scale", "points", "workout_name",
+  "session_notes", "modified_at_iso", "is_deleted"
+];
+var SCALE_CSV_COLUMN_NAMES = [
+  "scale_identifier", "scale_name", "step_order", "step_label", "grade_low", "grade_high",
+  "modified_at_iso", "is_deleted"
+];
+
+/**
+ * Converts the sessions to CSV text: one row for each send, and one row for
+ * a session with no sends.
+ * @param {Array} sessions - Validated session records.
+ * @returns {string} CSV text with a header row.
+ */
+function makeGymSessionCsvText(sessions) {
+  var rows = [GYM_SESSION_CSV_COLUMN_NAMES.join(",")];
+  for (var sessionIndex = 0; sessionIndex < sessions.length; sessionIndex += 1) {
+    var session = sessions[sessionIndex];
+    var sends = session.sends.length === 0 ? [null] : session.sends;
+    for (var sendIndex = 0; sendIndex < sends.length; sendIndex += 1) {
+      var send = sends[sendIndex];
+      rows.push([
+        session.identifier, session.gymName, session.scaleIdentifier, session.startedAtIso, session.endedAtIso,
+        session.goalPoints,
+        send === null ? "" : send.identifier, send === null ? "" : send.sentAtIso,
+        send === null ? "" : send.stepLabel, send === null ? "" : makeGradeText(send.gradeValue),
+        send === null ? "" : countPointsForGrade(send.gradeValue), send === null ? "" : send.workoutName,
+        session.notes, session.modifiedAtIso, session.isDeleted === true ? "yes" : "no"
+      ].map(quoteCsvValue).join(","));
+    }
+  }
+  return rows.join("\r\n") + "\r\n";
+}
+
+/**
+ * Converts session CSV text back into session records.
+ * @param {string} csvText - The full text of the file.
+ * @returns {object} An object with sessions, rejectedRows, and errorMessage.
+ */
+function readGymSessionCsvText(csvText) {
+  var parsed = parseCsvWithHeader(csvText, GYM_SESSION_CSV_COLUMN_NAMES);
+  if (parsed.errorMessage !== null) {
+    return { sessions: [], rejectedRows: [], errorMessage: parsed.errorMessage };
+  }
+  var rawByIdentifier = {};
+  var order = [];
+  for (var rowIndex = 0; rowIndex < parsed.rows.length; rowIndex += 1) {
+    var read = parsed.rows[rowIndex];
+    var identifier = read("session_identifier").trim();
+    if (rawByIdentifier[identifier] === undefined) {
+      order.push(identifier);
+      rawByIdentifier[identifier] = {
+        identifier: identifier, gymName: read("gym_name"), scaleIdentifier: read("scale_identifier").trim(),
+        startedAtIso: read("started_at_iso").trim(), endedAtIso: read("ended_at_iso").trim(),
+        goalPoints: read("goal_points").trim(), notes: read("session_notes"),
+        modifiedAtIso: read("modified_at_iso").trim(), isDeleted: readYesOrNo(read("is_deleted")),
+        sends: [], firstRowNumber: rowIndex + 2
+      };
+    }
+    if (read("sent_at_iso").trim().length > 0) {
+      rawByIdentifier[identifier].sends.push({
+        identifier: read("send_identifier"), sentAtIso: read("sent_at_iso").trim(),
+        stepLabel: read("step_label"), gradeValue: readGradeValue(read("grade_v_scale")),
+        workoutName: read("workout_name")
+      });
+    }
+  }
+  var sessions = [];
+  var rejectedRows = [];
+  for (var orderIndex = 0; orderIndex < order.length; orderIndex += 1) {
+    var result = validateSession(rawByIdentifier[order[orderIndex]]);
+    if (result.session === null) {
+      rejectedRows.push({ rowNumber: rawByIdentifier[order[orderIndex]].firstRowNumber, errorMessage: result.errorMessage });
+    } else {
+      sessions.push(result.session);
+    }
+  }
+  return { sessions: sessions, rejectedRows: rejectedRows, errorMessage: null };
+}
+
+/**
+ * Converts the custom scales to CSV text: one row for each step.
+ * @param {Array} scales - Validated scale records.
+ * @returns {string} CSV text with a header row.
+ */
+function makeScaleCsvText(scales) {
+  var rows = [SCALE_CSV_COLUMN_NAMES.join(",")];
+  for (var scaleIndex = 0; scaleIndex < scales.length; scaleIndex += 1) {
+    var scale = scales[scaleIndex];
+    for (var stepIndex = 0; stepIndex < scale.steps.length; stepIndex += 1) {
+      var step = scale.steps[stepIndex];
+      rows.push([
+        scale.identifier, scale.name, stepIndex + 1, step.label, makeGradeText(step.gradeLow),
+        makeGradeText(step.gradeHigh), scale.modifiedAtIso, scale.isDeleted === true ? "yes" : "no"
+      ].map(quoteCsvValue).join(","));
+    }
+  }
+  return rows.join("\r\n") + "\r\n";
+}
+
+/**
+ * Converts scale CSV text back into scale records.
+ * @param {string} csvText - The full text of the file.
+ * @returns {object} An object with scales, rejectedRows, and errorMessage.
+ */
+function readScaleCsvText(csvText) {
+  var parsed = parseCsvWithHeader(csvText, SCALE_CSV_COLUMN_NAMES);
+  if (parsed.errorMessage !== null) {
+    return { scales: [], rejectedRows: [], errorMessage: parsed.errorMessage };
+  }
+  var rawByIdentifier = {};
+  var order = [];
+  for (var rowIndex = 0; rowIndex < parsed.rows.length; rowIndex += 1) {
+    var read = parsed.rows[rowIndex];
+    var identifier = read("scale_identifier").trim();
+    if (rawByIdentifier[identifier] === undefined) {
+      order.push(identifier);
+      rawByIdentifier[identifier] = {
+        identifier: identifier, name: read("scale_name"), modifiedAtIso: read("modified_at_iso").trim(),
+        isDeleted: readYesOrNo(read("is_deleted")), steps: [], firstRowNumber: rowIndex + 2
+      };
+    }
+    rawByIdentifier[identifier].steps.push({
+      order: Number(read("step_order")), label: read("step_label"),
+      gradeLow: readGradeValue(read("grade_low")), gradeHigh: readGradeValue(read("grade_high"))
+    });
+  }
+  var scales = [];
+  var rejectedRows = [];
+  for (var orderIndex = 0; orderIndex < order.length; orderIndex += 1) {
+    var rawScale = rawByIdentifier[order[orderIndex]];
+    rawScale.steps.sort(function compareByOrder(first, second) { return first.order - second.order; });
+    var result = validateScale(rawScale);
+    if (result.scale === null) {
+      rejectedRows.push({ rowNumber: rawScale.firstRowNumber, errorMessage: result.errorMessage });
+    } else {
+      scales.push(result.scale);
+    }
+  }
+  return { scales: scales, rejectedRows: rejectedRows, errorMessage: null };
+}
+
+/**
+ * Parses CSV text and checks the header, for the gym files.
+ * @param {string} csvText - The full text of the file.
+ * @param {Array} columnNames - The columns the file must have.
+ * @returns {object} rows (each a read function by column name) and errorMessage.
+ */
+function parseCsvWithHeader(csvText, columnNames) {
+  var rows = parseCsvText(csvText);
+  if (rows.length < 2) {
+    return { rows: [], errorMessage: "The file has no data rows." };
+  }
+  var columnIndexByName = {};
+  for (var headerIndex = 0; headerIndex < rows[0].length; headerIndex += 1) {
+    columnIndexByName[rows[0][headerIndex].trim().toLowerCase()] = headerIndex;
+  }
+  for (var nameIndex = 0; nameIndex < columnNames.length; nameIndex += 1) {
+    if (Object.prototype.hasOwnProperty.call(columnIndexByName, columnNames[nameIndex]) === false) {
+      return { rows: [], errorMessage: "The file has no column named " + columnNames[nameIndex] + "." };
+    }
+  }
+  var readers = [];
+  for (var rowIndex = 1; rowIndex < rows.length; rowIndex += 1) {
+    readers.push(makeRowReader(rows[rowIndex], columnIndexByName));
+  }
+  return { rows: readers, errorMessage: null };
+}
+
+/**
+ * Builds a function that reads one column of one row by name.
+ * @param {Array} row - The values of the row.
+ * @param {object} columnIndexByName - The header lookup.
+ * @returns {Function} The reader.
+ */
+function makeRowReader(row, columnIndexByName) {
+  return function readColumn(columnName) {
+    var columnIndex = columnIndexByName[columnName];
+    return columnIndex === undefined || columnIndex >= row.length ? "" : row[columnIndex];
+  };
+}
+
+/* ==========================================================================
+   SECTION 10 OF 10 - GYM SCREENS
+
+   WHAT THIS SECTION DOES
+     Runs the gym side of the app: the mode switch, the session screen, the
+     two workouts with their rest timers, the session history, the scale
+     editor, and the gym data screen.
+
+   INPUTS
+     Taps and text from the person. The session and scale records.
+
+   OUTPUTS
+     The five gym screens.
+
+   SIDE EFFECTS
+     Writes sessions and scales to the storage of the browser. Runs a timer
+     during a workout rest. Plays a short tone when a rest ends.
+
+   FAILURE MODES
+     A workout needs an open session; the screen says so when there is none.
+     A rest timer that is running is stopped when the workout is stopped or
+     the page closes.
+
+   ASSUMPTIONS
+     One session is open at a time. A workout runs inside the open session,
+     and each tick of Sent is a send of that session.
+   ========================================================================== */
+
+var FOUR_BY_FOUR_ROUND_COUNT = 4;
+var FOUR_BY_FOUR_PROBLEM_COUNT = 4;
+var DEFAULT_FOUR_BY_FOUR_REST_SECONDS = 180;
+var DEFAULT_PYRAMID_REST_SECONDS = 60;
+var SESSION_CLOCK_MILLISECONDS = 30000;
+var REST_TICK_MILLISECONDS = 1000;
+var BEEP_FREQUENCY_HERTZ = 880;
+var BEEP_LENGTH_SECONDS = 0.3;
+var APP_MODES = ["outdoor", "gym"];
+var GYM_SCREEN_NAMES = ["gym-session", "gym-workout", "gym-history", "gym-scales", "gym-data"];
+
+/* DEVIATION: CCW-2.3 (no mutable state at module level)
+   REASON: A running workout and its rest countdown must live across many
+     timer ticks and taps. The scale editor must know which scale it edits.
+   LIMIT: One object each. Every send still passes validation when the
+     session is saved.
+   APPROVED-BY: (self, personal project)    DATE: 2026-09-08 */
+var workoutState = {
+  workoutName: "", grades: [], roundCount: 1, roundIndex: 0, problemIndex: 0,
+  restSeconds: 0, restRemaining: 0, restsAfterEachProblem: false, isResting: false,
+  timerHandle: null, isRunning: false
+};
+var scaleFormState = { identifier: "", isOpen: false };
+var rangeStep = null;
+var audioContext = null;
+var sessionClockHandle = null;
+
+/**
+ * Switches between the outdoor side and the gym side of the app.
+ * @param {string} mode - "outdoor" or "gym".
+ * @returns {void}
+ */
+function setAppMode(mode) {
+  if (APP_MODES.indexOf(mode) < 0) {
+    throw new Error("setAppMode got an unknown mode: " + mode + ".");
+  }
+  writeSettings({ appMode: mode });
+  findElement("mode-outdoor-button").setAttribute("aria-pressed", String(mode === "outdoor"));
+  findElement("mode-gym-button").setAttribute("aria-pressed", String(mode === "gym"));
+  findElement("tab-bar").hidden = mode !== "outdoor";
+  findElement("gym-tab-bar").hidden = mode !== "gym";
+  showScreen(mode === "gym" ? "gym-session" : "log");
+}
+
+/**
+ * Draws every gym screen again from the records.
+ * @returns {void}
+ */
+function drawGymScreens() {
+  drawSessionScreen();
+  drawWorkoutSetup();
+  drawSessionHistory();
+  drawScaleList();
+  drawGymStorageStatus();
+}
+
+/* ------------------------------ SESSION ---------------------------------- */
+
+/**
+ * Draws the session screen: the start panel when no session is open, the
+ * open panel with the step buttons otherwise.
+ * @returns {void}
+ */
+function drawSessionScreen() {
+  var openSession = readOpenSession();
+  findElement("session-start-panel").hidden = openSession !== null;
+  findElement("session-open-panel").hidden = openSession === null;
+  if (openSession === null) {
+    fillPicker("gym-name", listGymNames(readAllSessions()), "Gym", null);
+    fillScaleSelect(findElement("session-scale-select"));
+    drawScaleRowForGym();
+    stopSessionClock();
+    return;
+  }
+  drawOpenSession(openSession);
+  startSessionClock();
+}
+
+/**
+ * Shows the scale wheel only for a gym the app has not seen. A known gym
+ * keeps its scale.
+ * @returns {void}
+ */
+function drawScaleRowForGym() {
+  var gymName = readPickerValue("gym-name");
+  var knownScale = gymName.length === 0 ? null : findGymScaleIdentifier(readAllSessions(), gymName);
+  findElement("session-scale-row").hidden = knownScale !== null;
+  if (knownScale !== null) {
+    findElement("session-scale-select").value = knownScale;
+  }
+}
+
+/**
+ * Fills a wheel with every scale.
+ * @param {Element} selectElement - The wheel.
+ * @returns {void}
+ */
+function fillScaleSelect(selectElement) {
+  var currentValue = selectElement.value;
+  removeAllChildren(selectElement);
+  var scales = readAllScales();
+  for (var scaleIndex = 0; scaleIndex < scales.length; scaleIndex += 1) {
+    selectElement.appendChild(makeOption(scales[scaleIndex].identifier, scales[scaleIndex].name));
+  }
+  selectElement.value = currentValue.length > 0 && findScale(currentValue).identifier === currentValue
+    ? currentValue : V_SCALE_IDENTIFIER;
+}
+
+/**
+ * Draws the open session: the totals, the goal bar, the step buttons, and
+ * the last few sends.
+ * @param {object} session - The open session.
+ * @returns {void}
+ */
+function drawOpenSession(session) {
+  var summary = summarizeSession(session);
+  var scale = findScale(session.scaleIdentifier);
+  findElement("session-gym-name").textContent = session.gymName + " \u00b7 " + scale.name;
+  findElement("session-points").textContent = String(summary.pointTotal);
+  findElement("session-goal").textContent = session.goalPoints > 0 ? "of " + session.goalPoints : "V points";
+  findElement("session-count").textContent = summary.sendCount + (summary.sendCount === 1 ? " send" : " sends") +
+    (summary.hardestGrade > -99 ? " \u00b7 best " + makeGradeText(summary.hardestGrade) : "");
+  var percent = session.goalPoints > 0 ? Math.min(100, (summary.pointTotal / session.goalPoints) * 100) : 0;
+  findElement("session-progress").style.width = percent + "%";
+  findElement("session-goal-reached").hidden = !(session.goalPoints > 0 && summary.pointTotal >= session.goalPoints);
+  drawSessionElapsed(session);
+  drawStepButtons(scale);
+  drawRecentSends(session);
+}
+
+/**
+ * Writes how long the session has run.
+ * @param {object} session - The open session.
+ * @returns {void}
+ */
+function drawSessionElapsed(session) {
+  var minutes = Math.max(0, Math.floor((Date.now() - Date.parse(session.startedAtIso)) / 60000));
+  findElement("session-elapsed").textContent = minutes < 60
+    ? minutes + " min"
+    : Math.floor(minutes / 60) + " h " + (minutes % 60) + " min";
+}
+
+/**
+ * Starts the clock that keeps the elapsed time fresh.
+ * @returns {void}
+ */
+function startSessionClock() {
+  if (sessionClockHandle !== null) {
+    return;
+  }
+  sessionClockHandle = window.setInterval(function tick() {
+    var openSession = readOpenSession();
+    if (openSession !== null) {
+      drawSessionElapsed(openSession);
+    }
+  }, SESSION_CLOCK_MILLISECONDS);
+}
+
+/**
+ * Stops the elapsed clock.
+ * @returns {void}
+ */
+function stopSessionClock() {
+  if (sessionClockHandle !== null) {
+    window.clearInterval(sessionClockHandle);
+    sessionClockHandle = null;
+  }
+}
+
+/**
+ * Draws one button for each step of the scale.
+ * @param {object} scale - The scale of the open session.
+ * @returns {void}
+ */
+function drawStepButtons(scale) {
+  var buttonRow = findElement("session-step-buttons");
+  removeAllChildren(buttonRow);
+  for (var stepIndex = 0; stepIndex < scale.steps.length; stepIndex += 1) {
+    var step = scale.steps[stepIndex];
+    var stepButton = makeElement("button", "chip", step.label);
+    stepButton.type = "button";
+    if (step.gradeLow !== step.gradeHigh) {
+      stepButton.appendChild(makeElement("span", "chip-grade",
+        makeGradeText(step.gradeLow) + "\u2013" + makeGradeText(step.gradeHigh)));
+    } else if (scale.identifier !== V_SCALE_IDENTIFIER) {
+      stepButton.appendChild(makeElement("span", "chip-grade", makeGradeText(step.gradeLow)));
+    }
+    stepButton.addEventListener("click", makeStepHandler(step));
+    buttonRow.appendChild(stepButton);
+  }
+  findElement("session-range-block").hidden = true;
+}
+
+/**
+ * Builds the handler for one step button.
+ * @param {object} step - The step.
+ * @returns {Function} The handler.
+ */
+function makeStepHandler(step) {
+  return function tapStep() {
+    handleStepTap(step);
+  };
+}
+
+/**
+ * Answers a tap on a step. A step with one grade logs a send at once. A step
+ * with a range asks which grade it was.
+ * @param {object} step - The step.
+ * @returns {void}
+ */
+function handleStepTap(step) {
+  if (step.gradeLow === step.gradeHigh) {
+    addSendToOpenSession(step.label, step.gradeLow, "");
+    return;
+  }
+  rangeStep = step;
+  var rangeRow = findElement("session-range-buttons");
+  removeAllChildren(rangeRow);
+  for (var gradeValue = step.gradeLow; gradeValue <= step.gradeHigh; gradeValue += 1) {
+    var gradeButton = makeElement("button", "chip", makeGradeText(gradeValue));
+    gradeButton.type = "button";
+    gradeButton.addEventListener("click", makeRangeHandler(gradeValue));
+    rangeRow.appendChild(gradeButton);
+  }
+  findElement("session-range-name").textContent = step.label + " was which grade?";
+  findElement("session-range-block").hidden = false;
+}
+
+/**
+ * Builds the handler for one grade inside a range.
+ * @param {number} gradeValue - The grade.
+ * @returns {Function} The handler.
+ */
+function makeRangeHandler(gradeValue) {
+  return function pickGrade() {
+    if (rangeStep !== null) {
+      addSendToOpenSession(rangeStep.label, gradeValue, "");
+    }
+    rangeStep = null;
+    findElement("session-range-block").hidden = true;
+  };
+}
+
+/**
+ * Adds one send to the open session and saves it at once.
+ * @param {string} stepLabel - The step of the scale, such as "Blue".
+ * @param {number} gradeValue - The V grade.
+ * @param {string} workoutName - The workout the send belongs to, or empty.
+ * @returns {boolean} True when the send was saved.
+ */
+function addSendToOpenSession(stepLabel, gradeValue, workoutName) {
+  var session = readOpenSession();
+  if (session === null) {
+    showMessage("No session is open. Start one first.", true);
+    return false;
+  }
+  var nowIso = new Date().toISOString();
+  session.sends.push({
+    identifier: "send-" + makeClimbIdentifier(nowIso, Math.random()).slice(6),
+    sentAtIso: nowIso, stepLabel: stepLabel, gradeValue: gradeValue, workoutName: workoutName
+  });
+  session.modifiedAtIso = nowIso;
+  try {
+    var result = saveSession(session);
+    if (result.session === null) {
+      showMessage(result.errorMessage, true);
+      return false;
+    }
+    drawSessionScreen();
+    drawSessionHistory();
+    showMessage("+" + countPointsForGrade(gradeValue) + " \u00b7 " + stepLabel +
+      (stepLabel === makeGradeText(gradeValue) ? "" : " " + makeGradeText(gradeValue)), false);
+    return true;
+  } catch (saveError) {
+    showMessage(saveError.message, true);
+    return false;
+  }
+}
+
+/**
+ * Draws the last few sends of the open session, newest first.
+ * @param {object} session - The open session.
+ * @returns {void}
+ */
+function drawRecentSends(session) {
+  var listElement = findElement("session-send-list");
+  removeAllChildren(listElement);
+  var shown = session.sends.slice(-6).reverse();
+  for (var sendIndex = 0; sendIndex < shown.length; sendIndex += 1) {
+    var send = shown[sendIndex];
+    var timeText = new Date(send.sentAtIso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    listElement.appendChild(makeListRow(
+      send.stepLabel + (send.stepLabel === makeGradeText(send.gradeValue) ? "" : " \u00b7 " + makeGradeText(send.gradeValue)) +
+      (send.workoutName.length > 0 ? " \u00b7 " + send.workoutName : ""),
+      "+" + countPointsForGrade(send.gradeValue) + " \u00b7 " + timeText));
+  }
+}
+
+/**
+ * Starts a session at the chosen gym with the chosen scale and goal.
+ * @returns {void}
+ */
+function handleStartSession() {
+  if (readOpenSession() !== null) {
+    showMessage("A session is already open. End it first.", true);
+    return;
+  }
+  var gymName = readPickerValue("gym-name");
+  var knownScale = gymName.length === 0 ? null : findGymScaleIdentifier(readAllSessions(), gymName);
+  var nowIso = new Date().toISOString();
+  var result = saveSession({
+    gymName: gymName,
+    scaleIdentifier: knownScale === null ? findElement("session-scale-select").value : knownScale,
+    startedAtIso: nowIso, endedAtIso: "", modifiedAtIso: nowIso,
+    goalPoints: findElement("session-goal-input").value.trim(), notes: "", sends: []
+  });
+  if (result.session === null) {
+    showMessage(result.errorMessage, true);
+    return;
+  }
+  findElement("session-goal-input").value = "";
+  refreshScreens();
+  showMessage("Session started at " + result.session.gymName + ".", false);
+}
+
+/**
+ * Removes the last send of the open session.
+ * @returns {void}
+ */
+function handleUndoSend() {
+  var session = readOpenSession();
+  if (session === null || session.sends.length === 0) {
+    showMessage("Nothing to undo.", true);
+    return;
+  }
+  var removed = session.sends.pop();
+  session.modifiedAtIso = new Date().toISOString();
+  saveSession(session);
+  drawSessionScreen();
+  drawSessionHistory();
+  showMessage("Removed " + removed.stepLabel + ".", false);
+}
+
+/**
+ * Ends the open session and reports its total.
+ * @returns {void}
+ */
+function handleEndSession() {
+  var session = readOpenSession();
+  if (session === null) {
+    return;
+  }
+  var summary = summarizeSession(session);
+  if (window.confirm("End the session with " + summary.pointTotal + " V points?") === false) {
+    return;
+  }
+  stopWorkout();
+  session.endedAtIso = new Date().toISOString();
+  session.modifiedAtIso = session.endedAtIso;
+  saveSession(session);
+  refreshScreens();
+  var goalText = session.goalPoints > 0
+    ? (summary.pointTotal >= session.goalPoints ? " Goal reached." : " Goal was " + session.goalPoints + ".")
+    : "";
+  showMessage("Session ended: " + summary.pointTotal + " V points." + goalText, false);
+}
+
+/* ------------------------------ WORKOUTS --------------------------------- */
+
+/**
+ * Fills a wheel with the grades of the open session's scale. A step with a
+ * range gives one entry for each grade in it.
+ * @param {Element} selectElement - The wheel.
+ * @param {object} scale - The scale.
+ * @returns {void}
+ */
+function fillWorkoutGradeSelect(selectElement, scale) {
+  var currentValue = selectElement.value;
+  removeAllChildren(selectElement);
+  for (var stepIndex = 0; stepIndex < scale.steps.length; stepIndex += 1) {
+    var step = scale.steps[stepIndex];
+    for (var gradeValue = step.gradeLow; gradeValue <= step.gradeHigh; gradeValue += 1) {
+      var label = step.label === makeGradeText(gradeValue) ? step.label : step.label + " \u00b7 " + makeGradeText(gradeValue);
+      selectElement.appendChild(makeOption(step.label + "|" + gradeValue, label));
+    }
+  }
+  if (currentValue.length > 0) {
+    selectElement.value = currentValue;
+  }
+  if (selectElement.value === "" && selectElement.options.length > 0) {
+    selectElement.value = selectElement.options[0].value;
+  }
+}
+
+/**
+ * Reads a step label and a grade from a workout grade wheel.
+ * @param {string} selectId - The wheel.
+ * @returns {object} stepLabel and gradeValue.
+ */
+function readWorkoutGrade(selectId) {
+  var parts = findElement(selectId).value.split("|");
+  return { stepLabel: parts[0], gradeValue: Number(parts[1]) };
+}
+
+/**
+ * Draws the workout setup panel. It needs an open session for the scale.
+ * @returns {void}
+ */
+function drawWorkoutSetup() {
+  var openSession = readOpenSession();
+  findElement("workout-no-session").hidden = openSession !== null;
+  findElement("workout-form").hidden = openSession === null;
+  if (openSession === null) {
+    return;
+  }
+  var scale = findScale(openSession.scaleIdentifier);
+  var selectIds = ["fourbyfour-grade-1", "fourbyfour-grade-2", "fourbyfour-grade-3", "fourbyfour-grade-4",
+    "pyramid-bottom-select", "pyramid-top-select"];
+  for (var selectIndex = 0; selectIndex < selectIds.length; selectIndex += 1) {
+    fillWorkoutGradeSelect(findElement(selectIds[selectIndex]), scale);
+  }
+  if (findElement("fourbyfour-rest-input").value.length === 0) {
+    findElement("fourbyfour-rest-input").value = String(DEFAULT_FOUR_BY_FOUR_REST_SECONDS);
+  }
+  if (findElement("pyramid-rest-input").value.length === 0) {
+    findElement("pyramid-rest-input").value = String(DEFAULT_PYRAMID_REST_SECONDS);
+  }
+}
+
+/**
+ * Shows the fields of one workout kind.
+ * @param {string} workoutName - "4x4" or "Pyramid".
+ * @returns {void}
+ */
+function setWorkoutKind(workoutName) {
+  findElement("fourbyfour-setup").hidden = workoutName !== "4x4";
+  findElement("pyramid-setup").hidden = workoutName !== "Pyramid";
+  findElement("workout-fourbyfour-button").setAttribute("aria-pressed", String(workoutName === "4x4"));
+  findElement("workout-pyramid-button").setAttribute("aria-pressed", String(workoutName === "Pyramid"));
+  workoutState.workoutName = workoutName;
+}
+
+/**
+ * Reads a rest length from a box, with a floor of zero.
+ * @param {string} inputId - The box.
+ * @returns {number} Seconds.
+ */
+function readRestSeconds(inputId) {
+  var seconds = Number(findElement(inputId).value);
+  return Number.isFinite(seconds) === true && seconds >= 0 ? Math.floor(seconds) : 0;
+}
+
+/**
+ * Builds the plan of the chosen workout and starts it.
+ * @returns {void}
+ */
+function handleStartWorkout() {
+  if (readOpenSession() === null) {
+    showMessage("Start a session first.", true);
+    return;
+  }
+  if (workoutState.workoutName === "4x4") {
+    workoutState.grades = [1, 2, 3, 4].map(function readOne(number) {
+      return readWorkoutGrade("fourbyfour-grade-" + number);
+    });
+    workoutState.roundCount = FOUR_BY_FOUR_ROUND_COUNT;
+    workoutState.restSeconds = readRestSeconds("fourbyfour-rest-input");
+    workoutState.restsAfterEachProblem = false;
+  } else if (workoutState.workoutName === "Pyramid") {
+    var bottom = readWorkoutGrade("pyramid-bottom-select");
+    var top = readWorkoutGrade("pyramid-top-select");
+    if (top.gradeValue < bottom.gradeValue) {
+      showMessage("The top of the pyramid is below the bottom. Swap them.", true);
+      return;
+    }
+    workoutState.grades = makePyramidGrades(bottom.gradeValue, top.gradeValue).map(function toEntry(gradeValue) {
+      return { stepLabel: findStepLabelForGrade(gradeValue), gradeValue: gradeValue };
+    });
+    workoutState.roundCount = 1;
+    workoutState.restSeconds = readRestSeconds("pyramid-rest-input");
+    workoutState.restsAfterEachProblem = true;
+  } else {
+    showMessage("Pick 4x4 or Pyramid first.", true);
+    return;
+  }
+  makeAudioContext();
+  workoutState.roundIndex = 0;
+  workoutState.problemIndex = 0;
+  workoutState.isResting = false;
+  workoutState.isRunning = true;
+  findElement("workout-setup-panel").hidden = true;
+  findElement("workout-run-panel").hidden = false;
+  drawWorkoutRun();
+}
+
+/**
+ * Finds the label of the step that holds one grade in the open session's
+ * scale. The pyramid needs this, because it plans in V grades.
+ * @param {number} gradeValue - The grade.
+ * @returns {string} The label, or the V grade text when no step holds it.
+ */
+function findStepLabelForGrade(gradeValue) {
+  var openSession = readOpenSession();
+  var scale = openSession === null ? makeVScale() : findScale(openSession.scaleIdentifier);
+  for (var stepIndex = 0; stepIndex < scale.steps.length; stepIndex += 1) {
+    var step = scale.steps[stepIndex];
+    if (gradeValue >= step.gradeLow && gradeValue <= step.gradeHigh) {
+      return step.label;
+    }
+  }
+  return makeGradeText(gradeValue);
+}
+
+/**
+ * Draws the running workout: where you are, what is next, and the rest.
+ * @returns {void}
+ */
+function drawWorkoutRun() {
+  var current = workoutState.grades[workoutState.problemIndex];
+  var currentText = current === undefined ? "" :
+    (current.stepLabel === makeGradeText(current.gradeValue) ? current.stepLabel
+      : current.stepLabel + " \u00b7 " + makeGradeText(current.gradeValue));
+  findElement("workout-title").textContent = workoutState.workoutName;
+  findElement("workout-progress").textContent = workoutState.roundCount > 1
+    ? "Round " + (workoutState.roundIndex + 1) + " of " + workoutState.roundCount +
+      " \u00b7 Problem " + (workoutState.problemIndex + 1) + " of " + workoutState.grades.length
+    : "Problem " + (workoutState.problemIndex + 1) + " of " + workoutState.grades.length;
+  findElement("workout-current").textContent = currentText;
+  findElement("workout-timer").hidden = workoutState.isResting === false;
+  findElement("workout-sent-button").hidden = workoutState.isResting === true;
+  findElement("workout-skip-button").hidden = workoutState.isResting === true;
+  if (workoutState.isResting === true) {
+    var minutes = Math.floor(workoutState.restRemaining / 60);
+    var seconds = workoutState.restRemaining % 60;
+    findElement("workout-timer").textContent = "Rest " + minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+  }
+}
+
+/**
+ * Logs the current problem as sent and moves on.
+ * @returns {void}
+ */
+function handleWorkoutSent() {
+  var current = workoutState.grades[workoutState.problemIndex];
+  if (current === undefined || workoutState.isResting === true) {
+    return;
+  }
+  if (addSendToOpenSession(current.stepLabel, current.gradeValue, workoutState.workoutName) === true) {
+    advanceWorkout();
+  }
+}
+
+/**
+ * Moves on without a send.
+ * @returns {void}
+ */
+function handleWorkoutSkip() {
+  if (workoutState.isResting === false) {
+    advanceWorkout();
+  }
+}
+
+/**
+ * Steps to the next problem, the next round, a rest, or the end.
+ * @returns {void}
+ */
+function advanceWorkout() {
+  workoutState.problemIndex += 1;
+  var isRoundDone = workoutState.problemIndex >= workoutState.grades.length;
+  if (isRoundDone === true) {
+    workoutState.roundIndex += 1;
+    workoutState.problemIndex = 0;
+    if (workoutState.roundIndex >= workoutState.roundCount) {
+      finishWorkout();
+      return;
+    }
+    startRest();
+    return;
+  }
+  if (workoutState.restsAfterEachProblem === true && workoutState.restSeconds > 0) {
+    startRest();
+    return;
+  }
+  drawWorkoutRun();
+}
+
+/**
+ * Starts the rest countdown. When it reaches zero the next problem shows and
+ * a tone sounds.
+ * @returns {void}
+ */
+function startRest() {
+  if (workoutState.restSeconds <= 0) {
+    drawWorkoutRun();
+    return;
+  }
+  workoutState.isResting = true;
+  workoutState.restRemaining = workoutState.restSeconds;
+  drawWorkoutRun();
+  clearRestTimer();
+  workoutState.timerHandle = window.setInterval(function tickRest() {
+    workoutState.restRemaining -= 1;
+    if (workoutState.restRemaining <= 0) {
+      clearRestTimer();
+      workoutState.isResting = false;
+      playBeep();
+    }
+    drawWorkoutRun();
+  }, REST_TICK_MILLISECONDS);
+}
+
+/**
+ * Stops the rest countdown if one runs.
+ * @returns {void}
+ */
+function clearRestTimer() {
+  if (workoutState.timerHandle !== null) {
+    window.clearInterval(workoutState.timerHandle);
+    workoutState.timerHandle = null;
+  }
+}
+
+/**
+ * Ends the workout and returns to the setup panel.
+ * @returns {void}
+ */
+function finishWorkout() {
+  var name = workoutState.workoutName;
+  stopWorkout();
+  playBeep();
+  showMessage(name + " done.", false);
+}
+
+/**
+ * Stops the workout without a message.
+ * @returns {void}
+ */
+function stopWorkout() {
+  clearRestTimer();
+  workoutState.isRunning = false;
+  workoutState.isResting = false;
+  findElement("workout-setup-panel").hidden = false;
+  findElement("workout-run-panel").hidden = true;
+}
+
+/**
+ * Makes the sound system ready. Safari allows sound only after a tap, so
+ * this runs from the Start workout button.
+ * @returns {void}
+ */
+function makeAudioContext() {
+  if (audioContext !== null) {
+    return;
+  }
+  var ContextClass = window.AudioContext || window.webkitAudioContext;
+  if (ContextClass === undefined) {
+    return;
+  }
+  try {
+    audioContext = new ContextClass();
+  } catch (audioError) {
+    console.warn("No sound: " + audioError.message);
+  }
+}
+
+/**
+ * Plays one short tone.
+ * @returns {void}
+ */
+function playBeep() {
+  if (audioContext === null) {
+    return;
+  }
+  try {
+    var oscillator = audioContext.createOscillator();
+    oscillator.frequency.value = BEEP_FREQUENCY_HERTZ;
+    oscillator.connect(audioContext.destination);
+    oscillator.start();
+    oscillator.stop(audioContext.currentTime + BEEP_LENGTH_SECONDS);
+  } catch (audioError) {
+    console.warn("No sound: " + audioError.message);
+  }
+}
+
+/* ------------------------------ HISTORY ---------------------------------- */
+
+/**
+ * Draws the past sessions, newest first, each with its sends inside.
+ * @returns {void}
+ */
+function drawSessionHistory() {
+  var listElement = findElement("session-history");
+  removeAllChildren(listElement);
+  var sessions = readAllSessions();
+  if (sessions.length === 0) {
+    listElement.appendChild(makeElement("p", "quiet-text", "No sessions yet."));
+    return;
+  }
+  var totalPoints = 0;
+  for (var sessionIndex = 0; sessionIndex < sessions.length; sessionIndex += 1) {
+    totalPoints += summarizeSession(sessions[sessionIndex]).pointTotal;
+    listElement.appendChild(makeSessionNode(sessions[sessionIndex]));
+  }
+  findElement("session-history-total").textContent =
+    sessions.length + " sessions \u00b7 " + totalPoints + " V points in all";
+}
+
+/**
+ * Builds one session in the history, with its sends inside.
+ * @param {object} session - The session.
+ * @returns {Element} A details element.
+ */
+function makeSessionNode(session) {
+  var summary = summarizeSession(session);
+  var isOpen = session.endedAtIso.length === 0;
+  var detailText = summary.pointTotal + (session.goalPoints > 0 ? " / " + session.goalPoints : "") + " V points \u00b7 " +
+    summary.sendCount + " sends" + (summary.hardestGrade > -99 ? " \u00b7 best " + makeGradeText(summary.hardestGrade) : "") +
+    (isOpen === true ? " \u00b7 open" : "");
+  var node = makeTreeNode(makeDateText(readDateOnly(session.startedAtIso)) + " \u00b7 " + session.gymName, detailText, 0);
+  for (var sendIndex = session.sends.length - 1; sendIndex >= 0; sendIndex -= 1) {
+    var send = session.sends[sendIndex];
+    var row = makeListRow(
+      send.stepLabel + (send.stepLabel === makeGradeText(send.gradeValue) ? "" : " \u00b7 " + makeGradeText(send.gradeValue)) +
+      (send.workoutName.length > 0 ? " \u00b7 " + send.workoutName : ""),
+      "+" + countPointsForGrade(send.gradeValue));
+    row.className = "list-row tree-depth-1";
+    node.appendChild(row);
+  }
+  var removeButton = makeElement("button", "remove-button tree-depth-1", "Remove session");
+  removeButton.type = "button";
+  removeButton.addEventListener("click", makeSessionRemoveHandler(session.identifier));
+  node.appendChild(removeButton);
+  return node;
+}
+
+/**
+ * Builds the remove handler for one session.
+ * @param {string} identifier - The session.
+ * @returns {Function} The handler.
+ */
+function makeSessionRemoveHandler(identifier) {
+  return function removeThis() {
+    if (window.confirm("Remove this session and its sends? You cannot undo this.") === false) {
+      return;
+    }
+    stopWorkout();
+    removeSession(identifier, new Date().toISOString());
+    refreshScreens();
+    showMessage("Session removed.", false);
+  };
+}
+
+/* ------------------------------- SCALES ---------------------------------- */
+
+/**
+ * Draws the list of scales with their steps.
+ * @returns {void}
+ */
+function drawScaleList() {
+  var listElement = findElement("scale-list");
+  removeAllChildren(listElement);
+  var scales = readAllScales();
+  for (var scaleIndex = 0; scaleIndex < scales.length; scaleIndex += 1) {
+    listElement.appendChild(makeScaleNode(scales[scaleIndex]));
+  }
+}
+
+/**
+ * Builds one scale in the list.
+ * @param {object} scale - The scale.
+ * @returns {Element} A details element.
+ */
+function makeScaleNode(scale) {
+  var stepTexts = scale.steps.map(function describe(step) {
+    return step.gradeLow === step.gradeHigh
+      ? step.label + " = " + makeGradeText(step.gradeLow)
+      : step.label + " = " + makeGradeText(step.gradeLow) + "\u2013" + makeGradeText(step.gradeHigh);
+  });
+  var node = makeTreeNode(scale.name, scale.steps.length + " steps", 0);
+  node.appendChild(makeElement("p", "quiet-text tree-depth-1", stepTexts.join(", ")));
+  if (scale.isBuiltIn === false) {
+    var buttonRow = makeElement("div", "button-row tree-depth-1", "");
+    var editButton = makeElement("button", "button-quiet", "Edit");
+    editButton.type = "button";
+    editButton.addEventListener("click", makeScaleEditHandler(scale));
+    var removeButton = makeElement("button", "remove-button", "Remove");
+    removeButton.type = "button";
+    removeButton.addEventListener("click", makeScaleRemoveHandler(scale.identifier));
+    buttonRow.appendChild(editButton);
+    buttonRow.appendChild(removeButton);
+    node.appendChild(buttonRow);
+  }
+  return node;
+}
+
+/**
+ * Builds the edit handler for one scale.
+ * @param {object} scale - The scale.
+ * @returns {Function} The handler.
+ */
+function makeScaleEditHandler(scale) {
+  return function editThis() {
+    openScaleForm(scale);
+  };
+}
+
+/**
+ * Builds the remove handler for one scale.
+ * @param {string} identifier - The scale.
+ * @returns {Function} The handler.
+ */
+function makeScaleRemoveHandler(identifier) {
+  return function removeThis() {
+    if (window.confirm("Remove this scale? Sessions that used it keep their sends.") === false) {
+      return;
+    }
+    removeScale(identifier, new Date().toISOString());
+    refreshScreens();
+    showMessage("Scale removed.", false);
+  };
+}
+
+/**
+ * Opens the scale form, empty or filled with a scale to edit.
+ * @param {object|null} scale - The scale to edit, or null for a new one.
+ * @returns {void}
+ */
+function openScaleForm(scale) {
+  scaleFormState.identifier = scale === null ? "" : scale.identifier;
+  scaleFormState.isOpen = true;
+  findElement("scale-name-input").value = scale === null ? "" : scale.name;
+  var stepsElement = findElement("scale-steps");
+  removeAllChildren(stepsElement);
+  var steps = scale === null ? [{ label: "", gradeLow: 0, gradeHigh: 0 }] : scale.steps;
+  for (var stepIndex = 0; stepIndex < steps.length; stepIndex += 1) {
+    stepsElement.appendChild(makeStepRow(steps[stepIndex]));
+  }
+  findElement("scale-form-panel").hidden = false;
+  findElement("scale-form-title").textContent = scale === null ? "New scale" : "Edit " + scale.name;
+}
+
+/**
+ * Closes the scale form.
+ * @returns {void}
+ */
+function closeScaleForm() {
+  scaleFormState.identifier = "";
+  scaleFormState.isOpen = false;
+  findElement("scale-form-panel").hidden = true;
+}
+
+/**
+ * Builds one step row of the scale form: a label, a low grade, a high grade.
+ * @param {object} step - The step to show.
+ * @returns {Element} The row.
+ */
+function makeStepRow(step) {
+  var row = makeElement("div", "step-row", "");
+  var labelInput = document.createElement("input");
+  labelInput.type = "search";
+  labelInput.className = "step-label";
+  labelInput.placeholder = "Label";
+  labelInput.setAttribute("autocapitalize", "words");
+  labelInput.value = step.label;
+  row.appendChild(labelInput);
+  var lowSelect = makeGradeSelect("step-low", step.gradeLow);
+  var highSelect = makeGradeSelect("step-high", step.gradeHigh);
+  row.appendChild(lowSelect);
+  row.appendChild(makeElement("span", "step-to", "to"));
+  row.appendChild(highSelect);
+  var removeButton = makeElement("button", "remove-button", "\u00d7");
+  removeButton.type = "button";
+  removeButton.setAttribute("aria-label", "Remove this step");
+  removeButton.addEventListener("click", function removeRow() {
+    row.parentNode.removeChild(row);
+  });
+  row.appendChild(removeButton);
+  return row;
+}
+
+/**
+ * Builds a wheel of V grades.
+ * @param {string} className - The class of the wheel.
+ * @param {number} gradeValue - The grade to select.
+ * @returns {Element} The wheel.
+ */
+function makeGradeSelect(className, gradeValue) {
+  var selectElement = document.createElement("select");
+  selectElement.className = className;
+  for (var grade = MINIMUM_GRADE_VALUE; grade <= MAXIMUM_GRADE_VALUE; grade += 1) {
+    selectElement.appendChild(makeOption(String(grade), makeGradeText(grade)));
+  }
+  selectElement.value = String(gradeValue);
+  return selectElement;
+}
+
+/**
+ * Reads the steps from the scale form.
+ * @returns {Array} Untrusted step values.
+ */
+function readStepRows() {
+  var rows = document.querySelectorAll("#scale-steps .step-row");
+  var steps = [];
+  for (var rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+    steps.push({
+      label: rows[rowIndex].querySelector(".step-label").value,
+      gradeLow: rows[rowIndex].querySelector(".step-low").value,
+      gradeHigh: rows[rowIndex].querySelector(".step-high").value
+    });
+  }
+  return steps;
+}
+
+/**
+ * Saves the scale that the form holds.
+ * @returns {void}
+ */
+function handleSaveScale() {
+  var result = saveScale({
+    identifier: scaleFormState.identifier,
+    name: findElement("scale-name-input").value,
+    steps: readStepRows(),
+    modifiedAtIso: new Date().toISOString(),
+    isDeleted: false
+  });
+  if (result.scale === null) {
+    showMessage(result.errorMessage, true);
+    return;
+  }
+  closeScaleForm();
+  refreshScreens();
+  showMessage("Saved the scale " + result.scale.name + ".", false);
+}
+
+/* ------------------------------ GYM DATA --------------------------------- */
+
+/**
+ * Writes the sessions to a CSV file.
+ * @returns {void}
+ */
+function handleExportSessions() {
+  var sessions = readAllSessionsWithRemoved();
+  if (sessions.length === 0) {
+    showMessage("There are no sessions to export.", true);
+    return;
+  }
+  downloadTextFile("gym-sessions-" + readTodayDateOnly() + ".csv", makeGymSessionCsvText(sessions));
+  showMessage("Exported " + sessions.length + " sessions.", false);
+}
+
+/**
+ * Writes the custom scales to a CSV file.
+ * @returns {void}
+ */
+function handleExportScales() {
+  var scales = readStoredScalesWithRemoved();
+  if (scales.length === 0) {
+    showMessage("There are no custom scales to export. The V scale is built in.", true);
+    return;
+  }
+  downloadTextFile("gym-scales-" + readTodayDateOnly() + ".csv", makeScaleCsvText(scales));
+  showMessage("Exported " + scales.length + " scales.", false);
+}
+
+/**
+ * Reads the CSV file that the person selected on the gym Data screen.
+ * @param {boolean} isReplace - True to replace, false to merge.
+ * @returns {void}
+ */
+function readGymImportFile(isReplace) {
+  var fileInput = findElement("gym-import-file-input");
+  if (fileInput.files.length === 0) {
+    showMessage("Select a CSV file first.", true);
+    return;
+  }
+  if (isReplace === true && window.confirm("Replace the gym log with the file? You cannot undo this.") === false) {
+    return;
+  }
+  var fileReader = new FileReader();
+  fileReader.onerror = function reportReadError() {
+    showMessage("The phone could not read that file.", true);
+  };
+  fileReader.onload = function acceptFileText() {
+    applyGymImportedText(String(fileReader.result), isReplace);
+  };
+  fileReader.readAsText(fileInput.files[0]);
+}
+
+/**
+ * Puts a gym CSV file into the right log. The header says which.
+ * @param {string} csvText - The text of the file.
+ * @param {boolean} isReplace - True to replace, false to merge.
+ * @returns {void}
+ */
+function applyGymImportedText(csvText, isReplace) {
+  var head = csvText.slice(0, 400).toLowerCase();
+  try {
+    var messageText = "";
+    if (head.indexOf("session_identifier") >= 0) {
+      var sessionResult = readGymSessionCsvText(csvText);
+      if (sessionResult.errorMessage !== null) {
+        showMessage(sessionResult.errorMessage, true);
+        return;
+      }
+      writeAllSessions(mergeClimbs(isReplace === true ? [] : readAllSessionsWithRemoved(), sessionResult.sessions));
+      messageText = "Read " + sessionResult.sessions.length + " sessions." + makeRejectedText(sessionResult.rejectedRows);
+    } else if (head.indexOf("scale_identifier") >= 0) {
+      var scaleResult = readScaleCsvText(csvText);
+      if (scaleResult.errorMessage !== null) {
+        showMessage(scaleResult.errorMessage, true);
+        return;
+      }
+      writeStoredScales(mergeClimbs(isReplace === true ? [] : readStoredScalesWithRemoved(), scaleResult.scales));
+      messageText = "Read " + scaleResult.scales.length + " scales." + makeRejectedText(scaleResult.rejectedRows);
+    } else {
+      showMessage("This is not a gym file. Outdoor files go on the outdoor Data screen.", true);
+      return;
+    }
+    refreshScreens();
+    findElement("gym-import-result").textContent = messageText;
+    showMessage(messageText, false);
+  } catch (importError) {
+    showMessage("The import failed: " + importError.message, true);
+  }
+}
+
+/**
+ * Writes the tail of an import message for rejected rows.
+ * @param {Array} rejectedRows - The rows that failed.
+ * @returns {string} Empty when none failed.
+ */
+function makeRejectedText(rejectedRows) {
+  if (rejectedRows.length === 0) {
+    return "";
+  }
+  return " " + rejectedRows.length + " failed. Row " + rejectedRows[0].rowNumber + ": " + rejectedRows[0].errorMessage;
+}
+
+/**
+ * Reports what the gym side holds.
+ * @returns {void}
+ */
+function drawGymStorageStatus() {
+  findElement("gym-storage-status").textContent =
+    readAllSessions().length + " sessions and " + (readAllScales().length - 1) +
+    " custom scales are on this phone. Export after each visit.";
+}
+
+/**
+ * Connects every control of the gym side.
+ * @returns {void}
+ */
+function connectGymScreens() {
+  findElement("mode-outdoor-button").addEventListener("click", function chooseOutdoor() { setAppMode("outdoor"); });
+  findElement("mode-gym-button").addEventListener("click", function chooseGym() { setAppMode("gym"); });
+  connectPicker("gym-name", drawScaleRowForGym);
+  findElement("start-session-button").addEventListener("click", handleStartSession);
+  findElement("undo-send-button").addEventListener("click", handleUndoSend);
+  findElement("end-session-button").addEventListener("click", handleEndSession);
+  findElement("workout-fourbyfour-button").addEventListener("click", function pickFour() { setWorkoutKind("4x4"); });
+  findElement("workout-pyramid-button").addEventListener("click", function pickPyramid() { setWorkoutKind("Pyramid"); });
+  findElement("start-workout-button").addEventListener("click", handleStartWorkout);
+  findElement("workout-sent-button").addEventListener("click", handleWorkoutSent);
+  findElement("workout-skip-button").addEventListener("click", handleWorkoutSkip);
+  findElement("workout-stop-button").addEventListener("click", function stopIt() { stopWorkout(); showMessage("Workout stopped.", false); });
+  findElement("new-scale-button").addEventListener("click", function newScale() { openScaleForm(null); });
+  findElement("add-step-button").addEventListener("click", function addStep() {
+    findElement("scale-steps").appendChild(makeStepRow({ label: "", gradeLow: 0, gradeHigh: 0 }));
+  });
+  findElement("save-scale-button").addEventListener("click", handleSaveScale);
+  findElement("cancel-scale-button").addEventListener("click", closeScaleForm);
+  findElement("export-sessions-button").addEventListener("click", handleExportSessions);
+  findElement("export-scales-button").addEventListener("click", handleExportScales);
+  findElement("gym-import-add-button").addEventListener("click", function mergeFile() { readGymImportFile(false); });
+  findElement("gym-import-replace-button").addEventListener("click", function replaceFile() { readGymImportFile(true); });
+  var tabButtons = document.querySelectorAll("#gym-tab-bar .tab");
+  for (var tabIndex = 0; tabIndex < tabButtons.length; tabIndex += 1) {
+    connectTabButton(tabButtons[tabIndex]);
+  }
+  setWorkoutKind("4x4");
 }
 
 /* The service worker keeps a copy of the app on the phone. Without it the app
