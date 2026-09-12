@@ -694,6 +694,11 @@ details[open] > .tree-summary::before { content: "\25BE"; }
   <section id="gym-session-screen" class="screen" hidden>
     <div id="session-start-panel" class="panel">
       <h2>Start a session</h2>
+      <div class="choice-row" role="group" aria-label="Session type">
+        <button type="button" id="session-boulder-button" class="chip">Boulder</button>
+        <button type="button" id="session-rope-button" class="chip">Rope</button>
+      </div>
+      <div class="compact-row"></div>
       <div class="picker-slot" id="gym-name-slot">
         <select id="gym-name-select" aria-label="Gym"></select>
         <div class="picker-new" id="gym-name-new" hidden>
@@ -706,8 +711,12 @@ details[open] > .tree-summary::before { content: "\25BE"; }
         <span class="field-name" style="margin-top:8px">Grade scale for this gym</span>
         <select id="session-scale-select" aria-label="Scale"></select>
       </div>
-      <span class="field-name" style="margin-top:10px">Goal</span>
-      <input type="number" id="session-goal-input" inputmode="numeric" min="0" placeholder="V points to reach (optional)" aria-label="Goal V points">
+      <div id="session-height-row" hidden>
+        <span class="field-name" style="margin-top:10px">Wall height, feet</span>
+        <input type="number" id="session-height-input" inputmode="decimal" min="0" placeholder="Height of the rope wall" aria-label="Wall height in feet">
+      </div>
+      <span class="field-name" id="session-goal-name" style="margin-top:10px">Goal</span>
+      <input type="number" id="session-goal-input" inputmode="numeric" min="0" placeholder="V points to reach (optional)" aria-label="Goal">
       <button type="button" id="start-session-button" class="button-primary">Start session</button>
     </div>
 
@@ -795,13 +804,17 @@ details[open] > .tree-summary::before { content: "\25BE"; }
   <!-- ===================== GYM SCREEN 4: SCALES ===================== -->
   <section id="gym-scales-screen" class="screen" hidden>
     <h2>Grade scales</h2>
-    <p class="quiet-text">A scale maps each step of a gym to a V grade, or to a range. Points come from the V grade.</p>
+    <p class="quiet-text">A scale maps each step of a gym to a V grade or a 5.x grade, or to a range. Points come from the V grade. Rope sessions count vertical feet instead.</p>
     <div id="scale-list"></div>
     <div class="button-row">
       <button type="button" id="new-scale-button" class="button-quiet">New scale</button>
     </div>
     <div id="scale-form-panel" class="panel" hidden>
       <h3 id="scale-form-title">New scale</h3>
+      <div class="choice-row" role="group" aria-label="Scale type">
+        <button type="button" id="scale-boulder-button" class="chip">Boulder</button>
+        <button type="button" id="scale-rope-button" class="chip">Rope</button>
+      </div>
       <input type="search" id="scale-name-input" autocomplete="off" autocapitalize="words" placeholder="Scale name, such as Movement colors" aria-label="Scale name">
       <span class="field-name">Steps, easiest first</span>
       <div id="scale-steps"></div>
@@ -5077,6 +5090,76 @@ var MAXIMUM_SESSION_COUNT = 5000;
 var MAXIMUM_SENDS_IN_SESSION = 500;
 var MAXIMUM_SCALE_STEP_COUNT = 40;
 var V_SCALE_IDENTIFIER = "v-scale";
+var YDS_SCALE_IDENTIFIER = "yds-scale";
+var DISCIPLINES = ["boulder", "rope"];
+var MAXIMUM_WALL_HEIGHT_FEET = 300;
+
+/* Rope grades are kept as an index into this list, from 0 (5.5) to 28
+   (5.15d). The index is what a step of a custom rope scale maps to. */
+var ROPE_GRADE_LABELS = [
+  "5.5", "5.6", "5.7", "5.8", "5.9",
+  "5.10a", "5.10b", "5.10c", "5.10d", "5.11a", "5.11b", "5.11c", "5.11d",
+  "5.12a", "5.12b", "5.12c", "5.12d", "5.13a", "5.13b", "5.13c", "5.13d",
+  "5.14a", "5.14b", "5.14c", "5.14d", "5.15a", "5.15b", "5.15c", "5.15d"
+];
+
+/**
+ * Reports the lowest and highest grade value of one discipline.
+ * @param {string} discipline - "boulder" or "rope".
+ * @returns {object} lowest and highest.
+ */
+function readGradeRange(discipline) {
+  if (discipline === "rope") {
+    return { lowest: 0, highest: ROPE_GRADE_LABELS.length - 1 };
+  }
+  return { lowest: MINIMUM_GRADE_VALUE, highest: MAXIMUM_GRADE_VALUE };
+}
+
+/**
+ * Writes a grade the way a climber reads it, for either discipline.
+ * @param {string} discipline - "boulder" or "rope".
+ * @param {number} gradeValue - A V grade, or a rope grade index.
+ * @returns {string} Text such as "V5" or "5.11a".
+ */
+function makeGradeLabel(discipline, gradeValue) {
+  if (discipline === "rope") {
+    if (Number.isInteger(gradeValue) === false || gradeValue < 0 || gradeValue >= ROPE_GRADE_LABELS.length) {
+      throw new Error("makeGradeLabel got a rope grade out of range: " + gradeValue + ".");
+    }
+    return ROPE_GRADE_LABELS[gradeValue];
+  }
+  return makeGradeText(gradeValue);
+}
+
+/**
+ * Reads a grade of either discipline from text, for a CSV file.
+ * @param {string} discipline - "boulder" or "rope".
+ * @param {string} rawValue - Text such as "V5", "5.11a", or "12".
+ * @returns {number} The grade value, or -99 when not readable.
+ */
+function readGradeLabel(discipline, rawValue) {
+  if (discipline !== "rope") {
+    return readGradeValue(rawValue);
+  }
+  var cleanValue = String(rawValue === undefined ? "" : rawValue).trim().toLowerCase();
+  var labelIndex = ROPE_GRADE_LABELS.indexOf(cleanValue);
+  if (labelIndex >= 0) {
+    return labelIndex;
+  }
+  var numberValue = Number(cleanValue);
+  return Number.isInteger(numberValue) === true && numberValue >= 0 && numberValue < ROPE_GRADE_LABELS.length
+    ? numberValue : -99;
+}
+
+/**
+ * Reads a discipline from text. Anything but "rope" is boulder.
+ * @param {*} rawValue - Text from a record or a file.
+ * @returns {string} "boulder" or "rope".
+ */
+function readDiscipline(rawValue) {
+  return String(rawValue === undefined || rawValue === null ? "" : rawValue).trim().toLowerCase() === "rope"
+    ? "rope" : "boulder";
+}
 
 /**
  * Counts the points for one V grade. VB, V0, and V1 are worth 1 point. From
@@ -5102,7 +5185,22 @@ function makeVScale() {
     steps.push({ label: makeGradeText(gradeValue), gradeLow: gradeValue, gradeHigh: gradeValue });
   }
   return {
-    identifier: V_SCALE_IDENTIFIER, name: "V scale", steps: steps,
+    identifier: V_SCALE_IDENTIFIER, name: "V scale", discipline: "boulder", steps: steps,
+    modifiedAtIso: "2026-01-01T00:00:00.000Z", isDeleted: false, isBuiltIn: true
+  };
+}
+
+/**
+ * Builds the YDS rope scale: one step for each grade from 5.5 to 5.15d.
+ * @returns {object} The scale.
+ */
+function makeRopeScale() {
+  var steps = [];
+  for (var gradeIndex = 0; gradeIndex < ROPE_GRADE_LABELS.length; gradeIndex += 1) {
+    steps.push({ label: ROPE_GRADE_LABELS[gradeIndex], gradeLow: gradeIndex, gradeHigh: gradeIndex });
+  }
+  return {
+    identifier: YDS_SCALE_IDENTIFIER, name: "YDS 5.x", discipline: "rope", steps: steps,
     modifiedAtIso: "2026-01-01T00:00:00.000Z", isDeleted: false, isBuiltIn: true
   };
 }
@@ -5126,10 +5224,11 @@ function validateScale(rawScale) {
   if (rawScale.steps.length > MAXIMUM_SCALE_STEP_COUNT) {
     return { scale: null, errorMessage: "A scale holds at most " + MAXIMUM_SCALE_STEP_COUNT + " steps." };
   }
+  var discipline = readDiscipline(rawScale.discipline);
   var steps = [];
   var seenLabels = {};
   for (var stepIndex = 0; stepIndex < rawScale.steps.length; stepIndex += 1) {
-    var stepResult = validateScaleStep(rawScale.steps[stepIndex], seenLabels);
+    var stepResult = validateScaleStep(rawScale.steps[stepIndex], seenLabels, discipline);
     if (stepResult.errorMessage !== null) {
       return { scale: null, errorMessage: stepResult.errorMessage };
     }
@@ -5139,6 +5238,7 @@ function validateScale(rawScale) {
   var scale = {
     identifier: cleanText(rawScale.identifier),
     name: scaleName,
+    discipline: discipline,
     steps: steps,
     modifiedAtIso: Number.isNaN(Date.parse(modifiedAtIso)) === true ? new Date().toISOString() : modifiedAtIso,
     isDeleted: rawScale.isDeleted === true,
@@ -5156,7 +5256,8 @@ function validateScale(rawScale) {
  * @param {object} seenLabels - The labels already used, changed in place.
  * @returns {object} An object with step and errorMessage.
  */
-function validateScaleStep(rawStep, seenLabels) {
+function validateScaleStep(rawStep, seenLabels, discipline) {
+  var gradeRange = readGradeRange(discipline);
   var label = cleanText(rawStep === null ? "" : rawStep.label);
   if (label.length === 0) {
     return { step: null, errorMessage: "A step has no label. Give each step a name." };
@@ -5167,10 +5268,11 @@ function validateScaleStep(rawStep, seenLabels) {
   seenLabels[label] = true;
   var gradeLow = Number(rawStep.gradeLow);
   var gradeHigh = isFilledValue(rawStep.gradeHigh) === true ? Number(rawStep.gradeHigh) : gradeLow;
-  var isLowGood = Number.isInteger(gradeLow) === true && gradeLow >= MINIMUM_GRADE_VALUE && gradeLow <= MAXIMUM_GRADE_VALUE;
-  var isHighGood = Number.isInteger(gradeHigh) === true && gradeHigh >= MINIMUM_GRADE_VALUE && gradeHigh <= MAXIMUM_GRADE_VALUE;
+  var isLowGood = Number.isInteger(gradeLow) === true && gradeLow >= gradeRange.lowest && gradeLow <= gradeRange.highest;
+  var isHighGood = Number.isInteger(gradeHigh) === true && gradeHigh >= gradeRange.lowest && gradeHigh <= gradeRange.highest;
   if (isLowGood === false || isHighGood === false) {
-    return { step: null, errorMessage: "The step " + label + " needs a V grade from VB to V17." };
+    return { step: null, errorMessage: "The step " + label + " needs a grade from " +
+      makeGradeLabel(discipline, gradeRange.lowest) + " to " + makeGradeLabel(discipline, gradeRange.highest) + "." };
   }
   if (gradeHigh < gradeLow) {
     return { step: null, errorMessage: "The step " + label + " has its range upside down." };
@@ -5208,7 +5310,7 @@ function readStoredScalesWithRemoved() {
 }
 
 /**
- * Reads the scales that a gym can use: the V scale, then the custom ones.
+ * Reads the scales that a gym can use: the two built-in ones, then the custom ones.
  * @returns {Array} Validated scale records.
  */
 function readAllScales() {
@@ -5217,7 +5319,7 @@ function readAllScales() {
   }).sort(function compareByName(first, second) {
     return first.name.localeCompare(second.name);
   });
-  return [makeVScale()].concat(customScales);
+  return [makeVScale(), makeRopeScale()].concat(customScales);
 }
 
 /**
@@ -5227,7 +5329,7 @@ function readAllScales() {
  */
 function writeStoredScales(scales) {
   var customScales = scales.filter(function isCustom(scale) {
-    return scale.identifier !== V_SCALE_IDENTIFIER;
+    return scale.identifier !== V_SCALE_IDENTIFIER && scale.identifier !== YDS_SCALE_IDENTIFIER;
   });
   writeTextValue(GYM_SCALE_STORAGE_KEY, JSON.stringify(customScales));
 }
@@ -5257,7 +5359,7 @@ function saveScale(rawScale) {
  * @returns {boolean} True when one scale was marked.
  */
 function removeScale(identifier, nowIso) {
-  if (identifier === V_SCALE_IDENTIFIER) {
+  if (identifier === V_SCALE_IDENTIFIER || identifier === YDS_SCALE_IDENTIFIER) {
     return false;
   }
   var scales = readStoredScalesWithRemoved();
@@ -5276,19 +5378,20 @@ function removeScale(identifier, nowIso) {
 }
 
 /**
- * Finds one scale by its identifier. Falls back to the V scale, so that a
- * session whose scale was removed still shows its sends.
+ * Finds one scale by its identifier. Falls back to the built-in scale of the
+ * discipline, so that a session whose scale was removed still shows its sends.
  * @param {string} identifier - The identifier of the scale.
+ * @param {string} discipline - "boulder" or "rope", for the fallback.
  * @returns {object} The scale.
  */
-function findScale(identifier) {
+function findScale(identifier, discipline) {
   var scales = readAllScales().concat(readStoredScalesWithRemoved());
   for (var scaleIndex = 0; scaleIndex < scales.length; scaleIndex += 1) {
     if (scales[scaleIndex].identifier === identifier) {
       return scales[scaleIndex];
     }
   }
-  return makeVScale();
+  return discipline === "rope" ? makeRopeScale() : makeVScale();
 }
 
 /**
@@ -5312,11 +5415,21 @@ function validateSession(rawSession) {
   if (endedAtIso.length > 0 && Number.isNaN(Date.parse(endedAtIso)) === true) {
     return { session: null, errorMessage: "The end time is not readable: " + endedAtIso + "." };
   }
+  var discipline = readDiscipline(rawSession.discipline);
   var goalPoints = isFilledValue(rawSession.goalPoints) === true ? Number(rawSession.goalPoints) : 0;
-  if (Number.isInteger(goalPoints) === false || goalPoints < 0 || goalPoints > 100000) {
-    return { session: null, errorMessage: "The goal must be a whole number of V points." };
+  var goalFeet = isFilledValue(rawSession.goalFeet) === true ? Number(rawSession.goalFeet) : 0;
+  if (Number.isInteger(goalPoints) === false || goalPoints < 0 || goalPoints > 100000 ||
+      Number.isInteger(goalFeet) === false || goalFeet < 0 || goalFeet > 1000000) {
+    return { session: null, errorMessage: "The goal must be a whole number." };
   }
-  var sendResult = validateSends(rawSession.sends);
+  var wallHeightFeet = isFilledValue(rawSession.wallHeightFeet) === true ? Number(rawSession.wallHeightFeet) : 0;
+  if (Number.isFinite(wallHeightFeet) === false || wallHeightFeet < 0 || wallHeightFeet > MAXIMUM_WALL_HEIGHT_FEET) {
+    return { session: null, errorMessage: "The wall height must be from 0 to " + MAXIMUM_WALL_HEIGHT_FEET + " feet." };
+  }
+  if (discipline === "rope" && wallHeightFeet === 0) {
+    return { session: null, errorMessage: "A rope session needs the wall height in feet." };
+  }
+  var sendResult = validateSends(rawSession.sends, discipline);
   if (sendResult.errorMessage !== null) {
     return { session: null, errorMessage: sendResult.errorMessage };
   }
@@ -5324,10 +5437,13 @@ function validateSession(rawSession) {
   var session = {
     identifier: cleanText(rawSession.identifier),
     gymName: gymName,
-    scaleIdentifier: cleanText(rawSession.scaleIdentifier) || V_SCALE_IDENTIFIER,
+    discipline: discipline,
+    scaleIdentifier: cleanText(rawSession.scaleIdentifier) || (discipline === "rope" ? YDS_SCALE_IDENTIFIER : V_SCALE_IDENTIFIER),
     startedAtIso: startedAtIso,
     endedAtIso: endedAtIso,
     goalPoints: goalPoints,
+    goalFeet: goalFeet,
+    wallHeightFeet: wallHeightFeet,
     notes: cleanText(rawSession.notes),
     sends: sendResult.sends,
     modifiedAtIso: Number.isNaN(Date.parse(modifiedAtIso)) === true ? startedAtIso : modifiedAtIso,
@@ -5344,7 +5460,8 @@ function validateSession(rawSession) {
  * @param {*} rawSends - Untrusted values. An absent list means no sends.
  * @returns {object} An object with sends and errorMessage.
  */
-function validateSends(rawSends) {
+function validateSends(rawSends, discipline) {
+  var gradeRange = readGradeRange(discipline);
   if (rawSends === null || rawSends === undefined) {
     return { sends: [], errorMessage: null };
   }
@@ -5358,8 +5475,8 @@ function validateSends(rawSends) {
   for (var sendIndex = 0; sendIndex < rawSends.length; sendIndex += 1) {
     var rawSend = rawSends[sendIndex];
     var gradeValue = Number(rawSend.gradeValue);
-    if (Number.isInteger(gradeValue) === false || gradeValue < MINIMUM_GRADE_VALUE || gradeValue > MAXIMUM_GRADE_VALUE) {
-      return { sends: null, errorMessage: "A send has a grade outside VB to V17." };
+    if (Number.isInteger(gradeValue) === false || gradeValue < gradeRange.lowest || gradeValue > gradeRange.highest) {
+      return { sends: null, errorMessage: "A send has a grade outside the " + discipline + " range." };
     }
     var sentAtIso = cleanText(rawSend.sentAtIso);
     if (Number.isNaN(Date.parse(sentAtIso)) === true) {
@@ -5368,7 +5485,7 @@ function validateSends(rawSends) {
     sends.push({
       identifier: cleanText(rawSend.identifier) || ("send-" + makeClimbIdentifier(sentAtIso, Math.random()).slice(6)),
       sentAtIso: sentAtIso,
-      stepLabel: cleanText(rawSend.stepLabel) || makeGradeText(gradeValue),
+      stepLabel: cleanText(rawSend.stepLabel) || makeGradeLabel(discipline, gradeValue),
       gradeValue: gradeValue,
       workoutName: cleanText(rawSend.workoutName)
     });
@@ -5490,7 +5607,7 @@ function readOpenSession() {
 /**
  * Counts the totals of one session.
  * @param {object} session - A validated session record.
- * @returns {object} pointTotal, sendCount, and hardestGrade (-99 for none).
+ * @returns {object} pointTotal, verticalFeet, sendCount, and hardestGrade (-99 for none).
  */
 function summarizeSession(session) {
   if (session === null || typeof session !== "object") {
@@ -5500,12 +5617,16 @@ function summarizeSession(session) {
   var hardestGrade = -99;
   for (var sendIndex = 0; sendIndex < session.sends.length; sendIndex += 1) {
     var gradeValue = session.sends[sendIndex].gradeValue;
-    pointTotal += countPointsForGrade(gradeValue);
+    if (session.discipline !== "rope") {
+      pointTotal += countPointsForGrade(gradeValue);
+    }
     if (gradeValue > hardestGrade) {
       hardestGrade = gradeValue;
     }
   }
-  return { pointTotal: pointTotal, sendCount: session.sends.length, hardestGrade: hardestGrade };
+  /* Every route counts the full wall. A rope session has no V points. */
+  var verticalFeet = session.discipline === "rope" ? session.sends.length * session.wallHeightFeet : 0;
+  return { pointTotal: pointTotal, verticalFeet: verticalFeet, sendCount: session.sends.length, hardestGrade: hardestGrade };
 }
 
 /**
@@ -5526,15 +5647,32 @@ function listGymNames(sessions) {
  * so that the app keeps no separate list of gyms.
  * @param {Array} sessions - Validated session records, newest first.
  * @param {string} gymName - The gym.
+ * @param {string} discipline - "boulder" or "rope".
  * @returns {string|null} The scale identifier, or null for a new gym.
  */
-function findGymScaleIdentifier(sessions, gymName) {
+function findGymScaleIdentifier(sessions, gymName, discipline) {
   for (var sessionIndex = 0; sessionIndex < sessions.length; sessionIndex += 1) {
-    if (sessions[sessionIndex].gymName === gymName) {
+    if (sessions[sessionIndex].gymName === gymName && sessions[sessionIndex].discipline === discipline) {
       return sessions[sessionIndex].scaleIdentifier;
     }
   }
   return null;
+}
+
+/**
+ * Finds the wall height that a gym used last. A gym remembers its height
+ * through its latest rope session.
+ * @param {Array} sessions - Validated session records, newest first.
+ * @param {string} gymName - The gym.
+ * @returns {number} The height in feet, or 0 for a gym with no rope session.
+ */
+function findGymWallHeight(sessions, gymName) {
+  for (var sessionIndex = 0; sessionIndex < sessions.length; sessionIndex += 1) {
+    if (sessions[sessionIndex].gymName === gymName && sessions[sessionIndex].wallHeightFeet > 0) {
+      return sessions[sessionIndex].wallHeightFeet;
+    }
+  }
+  return 0;
 }
 
 /**
@@ -5560,12 +5698,13 @@ function makePyramidGrades(bottomGrade, topGrade) {
 /* ------------------------------ GYM CSV --------------------------------- */
 
 var GYM_SESSION_CSV_COLUMN_NAMES = [
-  "session_identifier", "gym_name", "scale_identifier", "started_at_iso", "ended_at_iso", "goal_points",
-  "send_identifier", "sent_at_iso", "step_label", "grade_v_scale", "points", "workout_name",
+  "session_identifier", "gym_name", "discipline", "scale_identifier", "started_at_iso", "ended_at_iso",
+  "goal_points", "goal_feet", "wall_height_feet",
+  "send_identifier", "sent_at_iso", "step_label", "grade", "points", "vertical_feet", "workout_name",
   "session_notes", "modified_at_iso", "is_deleted"
 ];
 var SCALE_CSV_COLUMN_NAMES = [
-  "scale_identifier", "scale_name", "step_order", "step_label", "grade_low", "grade_high",
+  "scale_identifier", "scale_name", "discipline", "step_order", "step_label", "grade_low", "grade_high",
   "modified_at_iso", "is_deleted"
 ];
 
@@ -5582,12 +5721,15 @@ function makeGymSessionCsvText(sessions) {
     var sends = session.sends.length === 0 ? [null] : session.sends;
     for (var sendIndex = 0; sendIndex < sends.length; sendIndex += 1) {
       var send = sends[sendIndex];
+      var isRope = session.discipline === "rope";
       rows.push([
-        session.identifier, session.gymName, session.scaleIdentifier, session.startedAtIso, session.endedAtIso,
-        session.goalPoints,
+        session.identifier, session.gymName, session.discipline, session.scaleIdentifier, session.startedAtIso,
+        session.endedAtIso, session.goalPoints, session.goalFeet, session.wallHeightFeet,
         send === null ? "" : send.identifier, send === null ? "" : send.sentAtIso,
-        send === null ? "" : send.stepLabel, send === null ? "" : makeGradeText(send.gradeValue),
-        send === null ? "" : countPointsForGrade(send.gradeValue), send === null ? "" : send.workoutName,
+        send === null ? "" : send.stepLabel, send === null ? "" : makeGradeLabel(session.discipline, send.gradeValue),
+        send === null || isRope === true ? "" : countPointsForGrade(send.gradeValue),
+        send === null || isRope === false ? "" : session.wallHeightFeet,
+        send === null ? "" : send.workoutName,
         session.notes, session.modifiedAtIso, session.isDeleted === true ? "yes" : "no"
       ].map(quoteCsvValue).join(","));
     }
@@ -5613,9 +5755,11 @@ function readGymSessionCsvText(csvText) {
     if (rawByIdentifier[identifier] === undefined) {
       order.push(identifier);
       rawByIdentifier[identifier] = {
-        identifier: identifier, gymName: read("gym_name"), scaleIdentifier: read("scale_identifier").trim(),
+        identifier: identifier, gymName: read("gym_name"), discipline: readDiscipline(read("discipline")),
+        scaleIdentifier: read("scale_identifier").trim(),
         startedAtIso: read("started_at_iso").trim(), endedAtIso: read("ended_at_iso").trim(),
-        goalPoints: read("goal_points").trim(), notes: read("session_notes"),
+        goalPoints: read("goal_points").trim(), goalFeet: read("goal_feet").trim(),
+        wallHeightFeet: read("wall_height_feet").trim(), notes: read("session_notes"),
         modifiedAtIso: read("modified_at_iso").trim(), isDeleted: readYesOrNo(read("is_deleted")),
         sends: [], firstRowNumber: rowIndex + 2
       };
@@ -5623,7 +5767,8 @@ function readGymSessionCsvText(csvText) {
     if (read("sent_at_iso").trim().length > 0) {
       rawByIdentifier[identifier].sends.push({
         identifier: read("send_identifier"), sentAtIso: read("sent_at_iso").trim(),
-        stepLabel: read("step_label"), gradeValue: readGradeValue(read("grade_v_scale")),
+        stepLabel: read("step_label"),
+        gradeValue: readGradeLabel(rawByIdentifier[identifier].discipline, read("grade")),
         workoutName: read("workout_name")
       });
     }
@@ -5653,8 +5798,9 @@ function makeScaleCsvText(scales) {
     for (var stepIndex = 0; stepIndex < scale.steps.length; stepIndex += 1) {
       var step = scale.steps[stepIndex];
       rows.push([
-        scale.identifier, scale.name, stepIndex + 1, step.label, makeGradeText(step.gradeLow),
-        makeGradeText(step.gradeHigh), scale.modifiedAtIso, scale.isDeleted === true ? "yes" : "no"
+        scale.identifier, scale.name, scale.discipline, stepIndex + 1, step.label,
+        makeGradeLabel(scale.discipline, step.gradeLow), makeGradeLabel(scale.discipline, step.gradeHigh),
+        scale.modifiedAtIso, scale.isDeleted === true ? "yes" : "no"
       ].map(quoteCsvValue).join(","));
     }
   }
@@ -5679,13 +5825,15 @@ function readScaleCsvText(csvText) {
     if (rawByIdentifier[identifier] === undefined) {
       order.push(identifier);
       rawByIdentifier[identifier] = {
-        identifier: identifier, name: read("scale_name"), modifiedAtIso: read("modified_at_iso").trim(),
+        identifier: identifier, name: read("scale_name"), discipline: readDiscipline(read("discipline")),
+        modifiedAtIso: read("modified_at_iso").trim(),
         isDeleted: readYesOrNo(read("is_deleted")), steps: [], firstRowNumber: rowIndex + 2
       };
     }
+    var stepDiscipline = rawByIdentifier[identifier].discipline;
     rawByIdentifier[identifier].steps.push({
       order: Number(read("step_order")), label: read("step_label"),
-      gradeLow: readGradeValue(read("grade_low")), gradeHigh: readGradeValue(read("grade_high"))
+      gradeLow: readGradeLabel(stepDiscipline, read("grade_low")), gradeHigh: readGradeLabel(stepDiscipline, read("grade_high"))
     });
   }
   var scales = [];
@@ -5793,7 +5941,7 @@ var workoutState = {
   restSeconds: 0, restRemaining: 0, restsAfterEachProblem: false, isResting: false,
   timerHandle: null, isRunning: false
 };
-var scaleFormState = { identifier: "", isOpen: false };
+var scaleFormState = { identifier: "", isOpen: false, discipline: "boulder" };
 var rangeStep = null;
 var audioContext = null;
 var sessionClockHandle = null;
@@ -5840,8 +5988,7 @@ function drawSessionScreen() {
   findElement("session-open-panel").hidden = openSession === null;
   if (openSession === null) {
     fillPicker("gym-name", listGymNames(readAllSessions()), "Gym", null);
-    fillScaleSelect(findElement("session-scale-select"));
-    drawScaleRowForGym();
+    drawSessionDiscipline();
     stopSessionClock();
     return;
   }
@@ -5850,33 +5997,78 @@ function drawSessionScreen() {
 }
 
 /**
- * Shows the scale wheel only for a gym the app has not seen. A known gym
- * keeps its scale.
+ * Reports the session type chosen on the start panel.
+ * @returns {string} "boulder" or "rope".
+ */
+function readSessionDiscipline() {
+  return readDiscipline(readSettings().sessionDiscipline);
+}
+
+/**
+ * Sets the session type on the start panel and remembers it.
+ * @param {string} discipline - "boulder" or "rope".
+ * @returns {void}
+ */
+function setSessionDiscipline(discipline) {
+  writeSettings({ sessionDiscipline: readDiscipline(discipline) });
+  drawSessionDiscipline();
+}
+
+/**
+ * Draws the start panel for the chosen session type: the scale wheel, the
+ * wall height for rope, and the goal in points or feet.
+ * @returns {void}
+ */
+function drawSessionDiscipline() {
+  var discipline = readSessionDiscipline();
+  findElement("session-boulder-button").setAttribute("aria-pressed", String(discipline === "boulder"));
+  findElement("session-rope-button").setAttribute("aria-pressed", String(discipline === "rope"));
+  findElement("session-height-row").hidden = discipline !== "rope";
+  findElement("session-goal-name").textContent = discipline === "rope" ? "Goal, vertical feet" : "Goal, V points";
+  findElement("session-goal-input").placeholder = discipline === "rope" ? "Feet to climb (optional)" : "V points to reach (optional)";
+  fillScaleSelect(findElement("session-scale-select"), discipline);
+  drawScaleRowForGym();
+}
+
+/**
+ * Shows the scale wheel only for a gym the app has not seen with this
+ * session type. A known gym keeps its scale and its wall height.
  * @returns {void}
  */
 function drawScaleRowForGym() {
   var gymName = readPickerValue("gym-name");
-  var knownScale = gymName.length === 0 ? null : findGymScaleIdentifier(readAllSessions(), gymName);
+  var discipline = readSessionDiscipline();
+  var sessions = readAllSessions();
+  var knownScale = gymName.length === 0 ? null : findGymScaleIdentifier(sessions, gymName, discipline);
   findElement("session-scale-row").hidden = knownScale !== null;
   if (knownScale !== null) {
     findElement("session-scale-select").value = knownScale;
   }
+  var heightInput = findElement("session-height-input");
+  var knownHeight = gymName.length === 0 ? 0 : findGymWallHeight(sessions, gymName);
+  if (knownHeight > 0 && heightInput.value.trim().length === 0) {
+    heightInput.value = String(knownHeight);
+  }
 }
 
 /**
- * Fills a wheel with every scale.
+ * Fills a wheel with the scales of one discipline.
  * @param {Element} selectElement - The wheel.
+ * @param {string} discipline - "boulder" or "rope".
  * @returns {void}
  */
-function fillScaleSelect(selectElement) {
+function fillScaleSelect(selectElement, discipline) {
   var currentValue = selectElement.value;
   removeAllChildren(selectElement);
-  var scales = readAllScales();
+  var scales = readAllScales().filter(function isOfDiscipline(scale) {
+    return scale.discipline === discipline;
+  });
   for (var scaleIndex = 0; scaleIndex < scales.length; scaleIndex += 1) {
     selectElement.appendChild(makeOption(scales[scaleIndex].identifier, scales[scaleIndex].name));
   }
-  selectElement.value = currentValue.length > 0 && findScale(currentValue).identifier === currentValue
-    ? currentValue : V_SCALE_IDENTIFIER;
+  var hasCurrent = scales.some(function isCurrent(scale) { return scale.identifier === currentValue; });
+  selectElement.value = hasCurrent === true ? currentValue
+    : (discipline === "rope" ? YDS_SCALE_IDENTIFIER : V_SCALE_IDENTIFIER);
 }
 
 /**
@@ -5887,15 +6079,21 @@ function fillScaleSelect(selectElement) {
  */
 function drawOpenSession(session) {
   var summary = summarizeSession(session);
-  var scale = findScale(session.scaleIdentifier);
-  findElement("session-gym-name").textContent = session.gymName + " \u00b7 " + scale.name;
-  findElement("session-points").textContent = String(summary.pointTotal);
-  findElement("session-goal").textContent = session.goalPoints > 0 ? "of " + session.goalPoints : "V points";
-  findElement("session-count").textContent = summary.sendCount + (summary.sendCount === 1 ? " send" : " sends") +
-    (summary.hardestGrade > -99 ? " \u00b7 best " + makeGradeText(summary.hardestGrade) : "");
-  var percent = session.goalPoints > 0 ? Math.min(100, (summary.pointTotal / session.goalPoints) * 100) : 0;
+  var scale = findScale(session.scaleIdentifier, session.discipline);
+  var isRope = session.discipline === "rope";
+  var total = isRope === true ? summary.verticalFeet : summary.pointTotal;
+  var goal = isRope === true ? session.goalFeet : session.goalPoints;
+  var unitText = isRope === true ? "ft" : "V points";
+  findElement("session-gym-name").textContent = session.gymName + " \u00b7 " + scale.name +
+    (isRope === true ? " \u00b7 " + session.wallHeightFeet + " ft wall" : "");
+  findElement("session-points").textContent = String(total);
+  findElement("session-goal").textContent = goal > 0 ? "of " + goal + " " + unitText : unitText;
+  findElement("session-count").textContent = summary.sendCount +
+    (isRope === true ? (summary.sendCount === 1 ? " route" : " routes") : (summary.sendCount === 1 ? " send" : " sends")) +
+    (summary.hardestGrade > -99 ? " \u00b7 best " + makeGradeLabel(session.discipline, summary.hardestGrade) : "");
+  var percent = goal > 0 ? Math.min(100, (total / goal) * 100) : 0;
   findElement("session-progress").style.width = percent + "%";
-  findElement("session-goal-reached").hidden = !(session.goalPoints > 0 && summary.pointTotal >= session.goalPoints);
+  findElement("session-goal-reached").hidden = !(goal > 0 && total >= goal);
   drawSessionElapsed(session);
   drawStepButtons(scale);
   drawRecentSends(session);
@@ -5954,9 +6152,9 @@ function drawStepButtons(scale) {
     stepButton.type = "button";
     if (step.gradeLow !== step.gradeHigh) {
       stepButton.appendChild(makeElement("span", "chip-grade",
-        makeGradeText(step.gradeLow) + "\u2013" + makeGradeText(step.gradeHigh)));
-    } else if (scale.identifier !== V_SCALE_IDENTIFIER) {
-      stepButton.appendChild(makeElement("span", "chip-grade", makeGradeText(step.gradeLow)));
+        makeGradeLabel(scale.discipline, step.gradeLow) + "\u2013" + makeGradeLabel(scale.discipline, step.gradeHigh)));
+    } else if (scale.isBuiltIn === false) {
+      stepButton.appendChild(makeElement("span", "chip-grade", makeGradeLabel(scale.discipline, step.gradeLow)));
     }
     stepButton.addEventListener("click", makeStepHandler(step));
     buttonRow.appendChild(stepButton);
@@ -5989,8 +6187,9 @@ function handleStepTap(step) {
   rangeStep = step;
   var rangeRow = findElement("session-range-buttons");
   removeAllChildren(rangeRow);
+  var discipline = readOpenSession() === null ? "boulder" : readOpenSession().discipline;
   for (var gradeValue = step.gradeLow; gradeValue <= step.gradeHigh; gradeValue += 1) {
-    var gradeButton = makeElement("button", "chip", makeGradeText(gradeValue));
+    var gradeButton = makeElement("button", "chip", makeGradeLabel(discipline, gradeValue));
     gradeButton.type = "button";
     gradeButton.addEventListener("click", makeRangeHandler(gradeValue));
     rangeRow.appendChild(gradeButton);
@@ -6041,8 +6240,9 @@ function addSendToOpenSession(stepLabel, gradeValue, workoutName) {
     }
     drawSessionScreen();
     drawSessionHistory();
-    showMessage("+" + countPointsForGrade(gradeValue) + " \u00b7 " + stepLabel +
-      (stepLabel === makeGradeText(gradeValue) ? "" : " " + makeGradeText(gradeValue)), false);
+    var gradeLabel = makeGradeLabel(session.discipline, gradeValue);
+    var gainText = session.discipline === "rope" ? "+" + session.wallHeightFeet + " ft" : "+" + countPointsForGrade(gradeValue);
+    showMessage(gainText + " \u00b7 " + stepLabel + (stepLabel === gradeLabel ? "" : " " + gradeLabel), false);
     return true;
   } catch (saveError) {
     showMessage(saveError.message, true);
@@ -6062,15 +6262,34 @@ function drawRecentSends(session) {
   for (var sendIndex = 0; sendIndex < shown.length; sendIndex += 1) {
     var send = shown[sendIndex];
     var timeText = new Date(send.sentAtIso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-    listElement.appendChild(makeListRow(
-      send.stepLabel + (send.stepLabel === makeGradeText(send.gradeValue) ? "" : " \u00b7 " + makeGradeText(send.gradeValue)) +
-      (send.workoutName.length > 0 ? " \u00b7 " + send.workoutName : ""),
-      "+" + countPointsForGrade(send.gradeValue) + " \u00b7 " + timeText));
+    listElement.appendChild(makeListRow(describeSend(session, send), describeGain(session, send) + " \u00b7 " + timeText));
   }
 }
 
 /**
- * Starts a session at the chosen gym with the chosen scale and goal.
+ * Writes one send the way the list shows it.
+ * @param {object} session - The session the send is in.
+ * @param {object} send - The send.
+ * @returns {string} Text such as "Blue · V5 · 4x4".
+ */
+function describeSend(session, send) {
+  var gradeLabel = makeGradeLabel(session.discipline, send.gradeValue);
+  return send.stepLabel + (send.stepLabel === gradeLabel ? "" : " \u00b7 " + gradeLabel) +
+    (send.workoutName.length > 0 ? " \u00b7 " + send.workoutName : "");
+}
+
+/**
+ * Writes what one send added: points, or feet.
+ * @param {object} session - The session the send is in.
+ * @param {object} send - The send.
+ * @returns {string} Text such as "+5" or "+40 ft".
+ */
+function describeGain(session, send) {
+  return session.discipline === "rope" ? "+" + session.wallHeightFeet + " ft" : "+" + countPointsForGrade(send.gradeValue);
+}
+
+/**
+ * Starts a session at the chosen gym with the chosen type, scale, and goal.
  * @returns {void}
  */
 function handleStartSession() {
@@ -6079,13 +6298,17 @@ function handleStartSession() {
     return;
   }
   var gymName = readPickerValue("gym-name");
-  var knownScale = gymName.length === 0 ? null : findGymScaleIdentifier(readAllSessions(), gymName);
+  var discipline = readSessionDiscipline();
+  var knownScale = gymName.length === 0 ? null : findGymScaleIdentifier(readAllSessions(), gymName, discipline);
   var nowIso = new Date().toISOString();
+  var goalText = findElement("session-goal-input").value.trim();
   var result = saveSession({
-    gymName: gymName,
+    gymName: gymName, discipline: discipline,
     scaleIdentifier: knownScale === null ? findElement("session-scale-select").value : knownScale,
     startedAtIso: nowIso, endedAtIso: "", modifiedAtIso: nowIso,
-    goalPoints: findElement("session-goal-input").value.trim(), notes: "", sends: []
+    goalPoints: discipline === "rope" ? "" : goalText, goalFeet: discipline === "rope" ? goalText : "",
+    wallHeightFeet: discipline === "rope" ? findElement("session-height-input").value.trim() : "",
+    notes: "", sends: []
   });
   if (result.session === null) {
     showMessage(result.errorMessage, true);
@@ -6093,7 +6316,7 @@ function handleStartSession() {
   }
   findElement("session-goal-input").value = "";
   refreshScreens();
-  showMessage("Session started at " + result.session.gymName + ".", false);
+  showMessage((discipline === "rope" ? "Rope session" : "Session") + " started at " + result.session.gymName + ".", false);
 }
 
 /**
@@ -6124,7 +6347,11 @@ function handleEndSession() {
     return;
   }
   var summary = summarizeSession(session);
-  if (window.confirm("End the session with " + summary.pointTotal + " V points?") === false) {
+  var isRope = session.discipline === "rope";
+  var total = isRope === true ? summary.verticalFeet : summary.pointTotal;
+  var goal = isRope === true ? session.goalFeet : session.goalPoints;
+  var unitText = isRope === true ? " ft" : " V points";
+  if (window.confirm("End the session with " + total + unitText + "?") === false) {
     return;
   }
   stopWorkout();
@@ -6132,10 +6359,8 @@ function handleEndSession() {
   session.modifiedAtIso = session.endedAtIso;
   saveSession(session);
   refreshScreens();
-  var goalText = session.goalPoints > 0
-    ? (summary.pointTotal >= session.goalPoints ? " Goal reached." : " Goal was " + session.goalPoints + ".")
-    : "";
-  showMessage("Session ended: " + summary.pointTotal + " V points." + goalText, false);
+  var goalText = goal > 0 ? (total >= goal ? " Goal reached." : " Goal was " + goal + unitText + ".") : "";
+  showMessage("Session ended: " + total + unitText + "." + goalText, false);
 }
 
 /* ------------------------------ WORKOUTS --------------------------------- */
@@ -6181,12 +6406,16 @@ function readWorkoutGrade(selectId) {
  */
 function drawWorkoutSetup() {
   var openSession = readOpenSession();
-  findElement("workout-no-session").hidden = openSession !== null;
-  findElement("workout-form").hidden = openSession === null;
-  if (openSession === null) {
+  var isUsable = openSession !== null && openSession.discipline === "boulder";
+  findElement("workout-no-session").hidden = isUsable;
+  findElement("workout-no-session").textContent = openSession === null
+    ? "Start a session first. A workout logs its sends into the open session."
+    : "Workouts run in a boulder session. This session is a rope session.";
+  findElement("workout-form").hidden = isUsable === false;
+  if (isUsable === false) {
     return;
   }
-  var scale = findScale(openSession.scaleIdentifier);
+  var scale = findScale(openSession.scaleIdentifier, "boulder");
   var selectIds = ["fourbyfour-grade-1", "fourbyfour-grade-2", "fourbyfour-grade-3", "fourbyfour-grade-4",
     "pyramid-bottom-select", "pyramid-top-select"];
   for (var selectIndex = 0; selectIndex < selectIds.length; selectIndex += 1) {
@@ -6228,8 +6457,8 @@ function readRestSeconds(inputId) {
  * @returns {void}
  */
 function handleStartWorkout() {
-  if (readOpenSession() === null) {
-    showMessage("Start a session first.", true);
+  if (readOpenSession() === null || readOpenSession().discipline !== "boulder") {
+    showMessage("Start a boulder session first.", true);
     return;
   }
   if (workoutState.workoutName === "4x4") {
@@ -6274,7 +6503,7 @@ function handleStartWorkout() {
  */
 function findStepLabelForGrade(gradeValue) {
   var openSession = readOpenSession();
-  var scale = openSession === null ? makeVScale() : findScale(openSession.scaleIdentifier);
+  var scale = openSession === null ? makeVScale() : findScale(openSession.scaleIdentifier, "boulder");
   for (var stepIndex = 0; stepIndex < scale.steps.length; stepIndex += 1) {
     var step = scale.steps[stepIndex];
     if (gradeValue >= step.gradeLow && gradeValue <= step.gradeHigh) {
@@ -6470,12 +6699,15 @@ function drawSessionHistory() {
     return;
   }
   var totalPoints = 0;
+  var totalFeet = 0;
   for (var sessionIndex = 0; sessionIndex < sessions.length; sessionIndex += 1) {
-    totalPoints += summarizeSession(sessions[sessionIndex]).pointTotal;
+    var summary = summarizeSession(sessions[sessionIndex]);
+    totalPoints += summary.pointTotal;
+    totalFeet += summary.verticalFeet;
     listElement.appendChild(makeSessionNode(sessions[sessionIndex]));
   }
   findElement("session-history-total").textContent =
-    sessions.length + " sessions \u00b7 " + totalPoints + " V points in all";
+    sessions.length + " sessions \u00b7 " + totalPoints + " V points \u00b7 " + totalFeet + " ft climbed";
 }
 
 /**
@@ -6486,16 +6718,18 @@ function drawSessionHistory() {
 function makeSessionNode(session) {
   var summary = summarizeSession(session);
   var isOpen = session.endedAtIso.length === 0;
-  var detailText = summary.pointTotal + (session.goalPoints > 0 ? " / " + session.goalPoints : "") + " V points \u00b7 " +
-    summary.sendCount + " sends" + (summary.hardestGrade > -99 ? " \u00b7 best " + makeGradeText(summary.hardestGrade) : "") +
+  var isRope = session.discipline === "rope";
+  var totalText = isRope === true
+    ? summary.verticalFeet + (session.goalFeet > 0 ? " / " + session.goalFeet : "") + " ft \u00b7 " + summary.sendCount + " routes"
+    : summary.pointTotal + (session.goalPoints > 0 ? " / " + session.goalPoints : "") + " V points \u00b7 " + summary.sendCount + " sends";
+  var detailText = totalText +
+    (summary.hardestGrade > -99 ? " \u00b7 best " + makeGradeLabel(session.discipline, summary.hardestGrade) : "") +
     (isOpen === true ? " \u00b7 open" : "");
-  var node = makeTreeNode(makeDateText(readDateOnly(session.startedAtIso)) + " \u00b7 " + session.gymName, detailText, 0);
+  var node = makeTreeNode(makeDateText(readDateOnly(session.startedAtIso)) + " \u00b7 " + session.gymName +
+    (isRope === true ? " \u00b7 rope" : ""), detailText, 0);
   for (var sendIndex = session.sends.length - 1; sendIndex >= 0; sendIndex -= 1) {
     var send = session.sends[sendIndex];
-    var row = makeListRow(
-      send.stepLabel + (send.stepLabel === makeGradeText(send.gradeValue) ? "" : " \u00b7 " + makeGradeText(send.gradeValue)) +
-      (send.workoutName.length > 0 ? " \u00b7 " + send.workoutName : ""),
-      "+" + countPointsForGrade(send.gradeValue));
+    var row = makeListRow(describeSend(session, send), describeGain(session, send));
     row.className = "list-row tree-depth-1";
     node.appendChild(row);
   }
@@ -6546,10 +6780,10 @@ function drawScaleList() {
 function makeScaleNode(scale) {
   var stepTexts = scale.steps.map(function describe(step) {
     return step.gradeLow === step.gradeHigh
-      ? step.label + " = " + makeGradeText(step.gradeLow)
-      : step.label + " = " + makeGradeText(step.gradeLow) + "\u2013" + makeGradeText(step.gradeHigh);
+      ? step.label + " = " + makeGradeLabel(scale.discipline, step.gradeLow)
+      : step.label + " = " + makeGradeLabel(scale.discipline, step.gradeLow) + "\u2013" + makeGradeLabel(scale.discipline, step.gradeHigh);
   });
-  var node = makeTreeNode(scale.name, scale.steps.length + " steps", 0);
+  var node = makeTreeNode(scale.name, (scale.discipline === "rope" ? "rope \u00b7 " : "boulder \u00b7 ") + scale.steps.length + " steps", 0);
   node.appendChild(makeElement("p", "quiet-text tree-depth-1", stepTexts.join(", ")));
   if (scale.isBuiltIn === false) {
     var buttonRow = makeElement("div", "button-row tree-depth-1", "");
@@ -6601,15 +6835,44 @@ function makeScaleRemoveHandler(identifier) {
 function openScaleForm(scale) {
   scaleFormState.identifier = scale === null ? "" : scale.identifier;
   scaleFormState.isOpen = true;
+  scaleFormState.discipline = scale === null ? "boulder" : scale.discipline;
   findElement("scale-name-input").value = scale === null ? "" : scale.name;
   var stepsElement = findElement("scale-steps");
   removeAllChildren(stepsElement);
   var steps = scale === null ? [{ label: "", gradeLow: 0, gradeHigh: 0 }] : scale.steps;
   for (var stepIndex = 0; stepIndex < steps.length; stepIndex += 1) {
-    stepsElement.appendChild(makeStepRow(steps[stepIndex]));
+    stepsElement.appendChild(makeStepRow(steps[stepIndex], scaleFormState.discipline));
   }
+  drawScaleFormDiscipline();
   findElement("scale-form-panel").hidden = false;
   findElement("scale-form-title").textContent = scale === null ? "New scale" : "Edit " + scale.name;
+}
+
+/**
+ * Marks the type buttons of the scale form.
+ * @returns {void}
+ */
+function drawScaleFormDiscipline() {
+  findElement("scale-boulder-button").setAttribute("aria-pressed", String(scaleFormState.discipline === "boulder"));
+  findElement("scale-rope-button").setAttribute("aria-pressed", String(scaleFormState.discipline === "rope"));
+}
+
+/**
+ * Changes the type of the scale under edit. The grade wheels of every step
+ * are rebuilt for the new type, at the lowest grade.
+ * @param {string} discipline - "boulder" or "rope".
+ * @returns {void}
+ */
+function setScaleFormDiscipline(discipline) {
+  scaleFormState.discipline = readDiscipline(discipline);
+  var stepsElement = findElement("scale-steps");
+  var labels = readStepRows().map(function readLabel(step) { return step.label; });
+  removeAllChildren(stepsElement);
+  var lowest = readGradeRange(scaleFormState.discipline).lowest;
+  for (var labelIndex = 0; labelIndex < labels.length; labelIndex += 1) {
+    stepsElement.appendChild(makeStepRow({ label: labels[labelIndex], gradeLow: lowest, gradeHigh: lowest }, scaleFormState.discipline));
+  }
+  drawScaleFormDiscipline();
 }
 
 /**
@@ -6627,7 +6890,7 @@ function closeScaleForm() {
  * @param {object} step - The step to show.
  * @returns {Element} The row.
  */
-function makeStepRow(step) {
+function makeStepRow(step, discipline) {
   var row = makeElement("div", "step-row", "");
   var labelInput = document.createElement("input");
   labelInput.type = "search";
@@ -6636,8 +6899,8 @@ function makeStepRow(step) {
   labelInput.setAttribute("autocapitalize", "words");
   labelInput.value = step.label;
   row.appendChild(labelInput);
-  var lowSelect = makeGradeSelect("step-low", step.gradeLow);
-  var highSelect = makeGradeSelect("step-high", step.gradeHigh);
+  var lowSelect = makeGradeSelect("step-low", step.gradeLow, discipline);
+  var highSelect = makeGradeSelect("step-high", step.gradeHigh, discipline);
   row.appendChild(lowSelect);
   row.appendChild(makeElement("span", "step-to", "to"));
   row.appendChild(highSelect);
@@ -6652,16 +6915,18 @@ function makeStepRow(step) {
 }
 
 /**
- * Builds a wheel of V grades.
+ * Builds a wheel of grades for one discipline.
  * @param {string} className - The class of the wheel.
  * @param {number} gradeValue - The grade to select.
+ * @param {string} discipline - "boulder" or "rope".
  * @returns {Element} The wheel.
  */
-function makeGradeSelect(className, gradeValue) {
+function makeGradeSelect(className, gradeValue, discipline) {
   var selectElement = document.createElement("select");
   selectElement.className = className;
-  for (var grade = MINIMUM_GRADE_VALUE; grade <= MAXIMUM_GRADE_VALUE; grade += 1) {
-    selectElement.appendChild(makeOption(String(grade), makeGradeText(grade)));
+  var gradeRange = readGradeRange(discipline);
+  for (var grade = gradeRange.lowest; grade <= gradeRange.highest; grade += 1) {
+    selectElement.appendChild(makeOption(String(grade), makeGradeLabel(discipline, grade)));
   }
   selectElement.value = String(gradeValue);
   return selectElement;
@@ -6692,6 +6957,7 @@ function handleSaveScale() {
   var result = saveScale({
     identifier: scaleFormState.identifier,
     name: findElement("scale-name-input").value,
+    discipline: scaleFormState.discipline,
     steps: readStepRows(),
     modifiedAtIso: new Date().toISOString(),
     isDeleted: false
@@ -6815,7 +7081,7 @@ function makeRejectedText(rejectedRows) {
  */
 function drawGymStorageStatus() {
   findElement("gym-storage-status").textContent =
-    readAllSessions().length + " sessions and " + (readAllScales().length - 1) +
+    readAllSessions().length + " sessions and " + (readAllScales().length - 2) +
     " custom scales are on this phone. Export after each visit.";
 }
 
@@ -6826,7 +7092,11 @@ function drawGymStorageStatus() {
 function connectGymScreens() {
   findElement("mode-outdoor-button").addEventListener("click", function chooseOutdoor() { setAppMode("outdoor"); });
   findElement("mode-gym-button").addEventListener("click", function chooseGym() { setAppMode("gym"); });
-  connectPicker("gym-name", drawScaleRowForGym);
+  connectPicker("gym-name", function handleGymPick() {
+    /* Another gym has another wall. Empty the height so the known one fills. */
+    findElement("session-height-input").value = "";
+    drawScaleRowForGym();
+  });
   findElement("start-session-button").addEventListener("click", handleStartSession);
   findElement("undo-send-button").addEventListener("click", handleUndoSend);
   findElement("end-session-button").addEventListener("click", handleEndSession);
@@ -6838,8 +7108,13 @@ function connectGymScreens() {
   findElement("workout-stop-button").addEventListener("click", function stopIt() { stopWorkout(); showMessage("Workout stopped.", false); });
   findElement("new-scale-button").addEventListener("click", function newScale() { openScaleForm(null); });
   findElement("add-step-button").addEventListener("click", function addStep() {
-    findElement("scale-steps").appendChild(makeStepRow({ label: "", gradeLow: 0, gradeHigh: 0 }));
+    var lowest = readGradeRange(scaleFormState.discipline).lowest;
+    findElement("scale-steps").appendChild(makeStepRow({ label: "", gradeLow: lowest, gradeHigh: lowest }, scaleFormState.discipline));
   });
+  findElement("scale-boulder-button").addEventListener("click", function pickBoulderScale() { setScaleFormDiscipline("boulder"); });
+  findElement("scale-rope-button").addEventListener("click", function pickRopeScale() { setScaleFormDiscipline("rope"); });
+  findElement("session-boulder-button").addEventListener("click", function pickBoulderSession() { setSessionDiscipline("boulder"); });
+  findElement("session-rope-button").addEventListener("click", function pickRopeSession() { setSessionDiscipline("rope"); });
   findElement("save-scale-button").addEventListener("click", handleSaveScale);
   findElement("cancel-scale-button").addEventListener("click", closeScaleForm);
   findElement("export-sessions-button").addEventListener("click", handleExportSessions);
